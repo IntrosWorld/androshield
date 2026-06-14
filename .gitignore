@@ -1,0 +1,17 @@
+# --- Python / runtime ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+backend/data/
+*.db
+*.pkl
+
+# --- Samples / artifacts (never commit malware or large binaries) ---
+samples/
+*.apk
+tools/frida/
+tools/dumps/
+
+

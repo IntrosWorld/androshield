@@ -1,0 +1,13 @@
+services:
+  analyzer:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Pass through from your shell/.env (all optional — app runs without them).
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+      - VT_API_KEY=${VT_API_KEY:-}
+    volumes:
+      - ./backend/data:/app/backend/data   # persist the SQLite analysis history
+    restart: unless-stopped

@@ -1,0 +1,9 @@
+**/__pycache__/
+**/*.pyc
+backend/.venv/
+backend/data/
+*.db
+.git/
+samples/
+*.apk
+.env

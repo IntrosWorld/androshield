@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APK Fraud Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body { background: #0b1020; }
+    .glass { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+    .gauge-wrap { position: relative; width: 180px; height: 180px; }
+    .gauge-text { position: absolute; inset: 0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #29304d; border-radius: 4px; }
+    .chip { display:inline-block; padding:2px 10px; border-radius:9999px; font-size:11px; font-weight:600; }
+  </style>
+</head>
+<body class="text-slate-200 min-h-screen">
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <header class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+          <span class="text-cyan-400">🛡️</span> APK Fraud Analyzer
+        </h1>
+        <p class="text-sm text-slate-400">Generative-AI automated static analysis &amp; risk scoring of fraudulent APKs</p>
+      </div>
+      <div id="gemini-badge" class="text-xs text-slate-500"></div>
+    </header>
+
+    <!-- Upload -->
+    <section id="upload-card" class="glass rounded-2xl p-8 mb-8">
+      <div id="dropzone" class="border-2 border-dashed border-slate-600 rounded-xl p-10 text-center cursor-pointer hover:border-cyan-500 transition">
+        <input type="file" id="file-input" accept=".apk" class="hidden" />
+        <div class="text-5xl mb-3">📦</div>
+        <p class="text-lg font-semibold text-white">Drop a suspicious <code>.apk</code> here or click to browse</p>
+        <p class="text-sm text-slate-400 mt-1">Static analysis only — the APK is never executed.</p>
+        <p id="file-name" class="text-cyan-400 mt-3 text-sm"></p>
+      </div>
+      <div class="flex justify-center mt-5">
+        <button id="analyze-btn" disabled
+          class="bg-cyan-600 disabled:bg-slate-700 disabled:text-slate-500 hover:bg-cyan-500 text-white font-semibold px-8 py-2.5 rounded-lg transition">
+          Analyze APK
+        </button>
+      </div>
+    </section>
+
+    <!-- Recent analyses -->
+    <section id="history-card" class="glass rounded-2xl p-5 mb-8 hidden">
+      <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Recent Analyses</h3>
+      <div id="history-list" class="space-y-1.5"></div>
+    </section>
+
+    <!-- Loading -->
+    <section id="loading" class="hidden text-center py-12">
+      <div class="inline-block w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+      <p class="text-slate-400 mt-4" id="loading-text">Decompiling &amp; analyzing APK…</p>
+    </section>
+
+    <!-- Error -->
+    <section id="error-box" class="hidden glass border-red-500/40 rounded-xl p-4 mb-6 text-red-300 text-sm"></section>
+
+    <!-- Results -->
+    <section id="results" class="hidden space-y-6">
+      <!-- Top: gauge + meta -->
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="glass rounded-2xl p-6 flex flex-col items-center justify-center">
+          <div class="gauge-wrap">
+            <canvas id="gauge"></canvas>
+            <div class="gauge-text">
+              <span id="score-num" class="text-4xl font-bold text-white">0</span>
+              <span class="text-xs text-slate-400">/ 100</span>
+              <span id="severity-chip" class="chip mt-2">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="glass rounded-2xl p-6 md:col-span-2">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Sample</h3>
+          <div id="meta" class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm"></div>
+          <div class="mt-4">
+            <span class="text-xs text-slate-400">Threat assessment: </span>
+            <span id="threat" class="font-semibold text-white">—</span>
+          </div>
+          <div class="mt-5 flex flex-wrap gap-2">
+            <button id="pdf-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-lg">⬇ PDF Report</button>
+            <button id="ioc-csv-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-lg">⬇ IOCs (CSV)</button>
+            <button id="ioc-json-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-lg">⬇ IOCs (JSON)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI summary -->
+      <div class="glass rounded-2xl p-6">
+        <h3 class="text-lg font-semibold text-white mb-2 flex items-center gap-2">🤖 AI Threat Explanation</h3>
+        <p id="exec-summary" class="text-slate-200 mb-3"></p>
+        <p id="tech-summary" class="text-slate-400 text-sm"></p>
+        <div id="behaviors" class="flex flex-wrap gap-2 mt-4"></div>
+      </div>
+
+      <!-- Grid: breakdown + permissions -->
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="glass rounded-2xl p-6">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Risk Score Breakdown</h3>
+          <div id="breakdown" class="space-y-2"></div>
+        </div>
+        <div class="glass rounded-2xl p-6">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Dangerous Permissions</h3>
+          <div id="perms" class="space-y-2 max-h-72 overflow-y-auto"></div>
+        </div>
+      </div>
+
+      <!-- Grid: APIs + IOCs -->
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="glass rounded-2xl p-6">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Suspicious APIs</h3>
+          <div id="apis" class="space-y-2 max-h-72 overflow-y-auto"></div>
+        </div>
+        <div class="glass rounded-2xl p-6">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Indicators of Compromise</h3>
+          <div id="iocs" class="space-y-3 max-h-72 overflow-y-auto text-sm"></div>
+        </div>
+      </div>
+
+      <!-- YARA + MITRE -->
+      <div class="grid md:grid-cols-2 gap-6">
+        <div id="yara-card" class="glass rounded-2xl p-6 hidden">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🧬 YARA Signature Matches</h3>
+          <div id="yara-body" class="space-y-2"></div>
+        </div>
+        <div id="mitre-card" class="glass rounded-2xl p-6 hidden">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🎯 MITRE ATT&amp;CK (Mobile)</h3>
+          <div id="mitre-body" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <!-- Certificate + attack surface -->
+      <div id="cert-card" class="glass rounded-2xl p-6 hidden">
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">📜 Certificate &amp; Attack Surface</h3>
+        <div id="cert-body" class="text-sm space-y-1.5"></div>
+      </div>
+
+      <!-- ML + APKiD -->
+      <div class="grid md:grid-cols-2 gap-6">
+        <div id="ml-card" class="glass rounded-2xl p-6 hidden">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🧠 ML Classifier Verdict</h3>
+          <div id="ml-body" class="text-sm"></div>
+        </div>
+        <div id="apkid-card" class="glass rounded-2xl p-6 hidden">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🔬 APKiD Fingerprint</h3>
+          <div id="apkid-body" class="text-sm space-y-1.5"></div>
+        </div>
+      </div>
+
+      <!-- VirusTotal -->
+      <div id="vt-card" class="glass rounded-2xl p-6 hidden">
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🧪 VirusTotal Corroboration</h3>
+        <div id="vt-body" class="text-sm"></div>
+      </div>
+
+      <!-- Dynamic analysis (emulator) -->
+      <div class="glass rounded-2xl p-6 border-amber-500/20">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <h3 class="text-lg font-semibold text-white flex items-center gap-2">📲 Dynamic Analysis <span class="text-xs font-normal text-slate-500">(emulator sandbox)</span></h3>
+          <span id="emu-status" class="text-xs"></span>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">Installs &amp; runs the APK in your attached emulator to observe runtime behaviour. Use an isolated AVD.</p>
+        <div class="flex items-center gap-3 mt-4 flex-wrap">
+          <label class="text-sm text-slate-400">Device
+            <select id="dyn-device" class="bg-slate-800 text-slate-200 rounded px-2 py-1 ml-1 text-sm max-w-[14rem]"></select>
+          </label>
+          <label class="text-sm text-slate-400">Duration
+            <select id="dyn-duration" class="bg-slate-800 text-slate-200 rounded px-2 py-1 ml-1 text-sm">
+              <option value="10">10s</option><option value="15" selected>15s</option>
+              <option value="30">30s</option><option value="60">60s</option>
+            </select>
+          </label>
+          <label class="text-sm text-slate-400 flex items-center gap-1.5">
+            <input type="checkbox" id="dyn-frida" class="accent-cyan-500"> Frida hooks
+          </label>
+          <button id="dyn-run-btn" class="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm font-semibold px-5 py-2 rounded-lg">▶ Run in Emulator</button>
+        </div>
+        <div id="dyn-loading" class="hidden mt-4 text-sm text-slate-400">
+          <span class="inline-block w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin align-middle"></span>
+          <span id="dyn-loading-text" class="align-middle ml-2">Running in emulator…</span>
+        </div>
+        <div id="dyn-results" class="hidden mt-4"></div>
+      </div>
+
+      <!-- Recommendations -->
+      <div class="glass rounded-2xl p-6">
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Recommended Actions</h3>
+        <ul id="recs" class="space-y-1.5 text-sm"></ul>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
