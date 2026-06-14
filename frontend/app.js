@@ -21,7 +21,7 @@ function refreshHealth() {
       ? '<span class="chip" style="background:#0e7490;color:#fff">Gemini connected</span>'
       : '<span class="chip" style="background:#334155;color:#cbd5e1">Template mode (no GEMINI_API_KEY)</span>';
     if (h.analyzer_ready === false) {
-      badges += ' <span class="chip" style="background:#7f1d1d;color:#fecaca">⚠ Engine offline — start from .venv</span>';
+      badges += ' <span class="chip" style="background:#7f1d1d;color:#fecaca">Engine offline — start from .venv</span>';
     }
     $("gemini-badge").innerHTML = badges;
     updateEmuStatus();
@@ -37,14 +37,14 @@ function updateEmuStatus() {
       el.innerHTML = `<span class="chip" style="background:#065f46;color:#a7f3d0">● ${dev.avd_name || d.serial}${dev.android_version ? " · Android " + dev.android_version : ""}</span>`
         + (healthData.frida_available ? ` <span class="chip" style="background:#1e293b;color:#67e8f9">Frida ready</span>` : "");
     } else {
-      el.innerHTML = `<span class="chip" style="background:#78350f;color:#fed7aa">⚠ ${d.preferred_avd} not running — pick a device deliberately</span>`;
+      el.innerHTML = `<span class="chip" style="background:#78350f;color:#fed7aa">${d.preferred_avd} not running — pick a device deliberately</span>`;
     }
     if (sel) {
       const devices = d.devices || [];
       let opts = devices.map(x => {
         const name = x.avd_name || x.serial;
         const isSandbox = name === d.preferred_avd;
-        return `<option value="${x.serial}" ${x.serial === d.serial ? "selected" : ""}>${isSandbox ? "🛡 " : ""}${name} (${x.serial})</option>`;
+        return `<option value="${x.serial}" ${x.serial === d.serial ? "selected" : ""}>${isSandbox ? "[Sandbox] " : ""}${name} (${x.serial})</option>`;
       });
       if (!d.sandbox_present) opts.unshift(`<option value="" selected disabled>— choose a device —</option>`);
       sel.innerHTML = opts.join("");
@@ -330,14 +330,16 @@ async function openSample(id) {
 loadHistory();
 
 function drawGauge(score, color) {
-  const ctx = $("gauge").getContext("2d");
+  const canvas = $("gauge");
+  canvas.width = 180;
+  canvas.height = 180;
+  const ctx = canvas.getContext("2d");
   if (gaugeChart) gaugeChart.destroy();
   gaugeChart = new Chart(ctx, {
     type: "doughnut",
     data: { datasets: [{ data: [score, 100 - score], backgroundColor: [color, "#1e293b"], borderWidth: 0 }] },
     options: { cutout: "78%", rotation: -90, circumference: 360, plugins: { tooltip: { enabled: false }, legend: { display: false } }, responsive: false },
   });
-  $("gauge").width = 180; $("gauge").height = 180;
 }
 
 // --- Dynamic analysis ---
@@ -346,12 +348,12 @@ async function runDynamic() {
   refreshHealth();
   if (!healthData.dynamic || !healthData.dynamic.available) {
     $("dyn-results").classList.remove("hidden");
-    $("dyn-results").innerHTML = `<p class="text-amber-400 text-sm">⚠ No emulator attached. Start one: <code>emulator -avd &lt;name&gt;</code>, then retry.</p>`;
+    $("dyn-results").innerHTML = `<p class="text-amber-400 text-sm">No emulator attached. Start one: <code>emulator -avd &lt;name&gt;</code>, then retry.</p>`;
     return;
   }
   if (!selectedFile) {
     $("dyn-results").classList.remove("hidden");
-    $("dyn-results").innerHTML = `<p class="text-amber-400 text-sm">⚠ Re-upload the APK above to run dynamic analysis on it.</p>`;
+    $("dyn-results").innerHTML = `<p class="text-amber-400 text-sm">Re-upload the APK above to run dynamic analysis on it.</p>`;
     return;
   }
   const dur = $("dyn-duration").value, frida = $("dyn-frida").checked;
@@ -373,7 +375,7 @@ async function runDynamic() {
     renderDynamic(data);
   } catch (e) {
     $("dyn-results").classList.remove("hidden");
-    $("dyn-results").innerHTML = `<p class="text-red-400 text-sm">⚠ ${e.message}</p>`;
+    $("dyn-results").innerHTML = `<p class="text-red-400 text-sm">${e.message}</p>`;
   } finally {
     $("dyn-loading").classList.add("hidden");
     $("dyn-run-btn").disabled = false;
@@ -383,11 +385,11 @@ async function runDynamic() {
 function renderDynamic(d) {
   $("dyn-results").classList.remove("hidden");
   if (!d.available) {
-    $("dyn-results").innerHTML = `<p class="text-amber-400 text-sm">⚠ ${d.reason || "Emulator unavailable."}</p>`;
+    $("dyn-results").innerHTML = `<p class="text-amber-400 text-sm">${d.reason || "Emulator unavailable."}</p>`;
     return;
   }
   if (!d.ran) {
-    $("dyn-results").innerHTML = `<p class="text-amber-400 text-sm">⚠ ${d.reason || "APK did not run."}</p>`;
+    $("dyn-results").innerHTML = `<p class="text-amber-400 text-sm">${d.reason || "APK did not run."}</p>`;
     return;
   }
   const net = d.network || {};
@@ -414,5 +416,5 @@ function renderDynamic(d) {
 }
 
 function short(h) { return h ? `${h.slice(0, 10)}…${h.slice(-6)}` : "—"; }
-function showError(msg) { const e = $("error-box"); e.textContent = "⚠ " + msg; e.classList.remove("hidden"); }
+function showError(msg) { const e = $("error-box"); e.textContent = msg; e.classList.remove("hidden"); }
 function hideError() { $("error-box").classList.add("hidden"); }

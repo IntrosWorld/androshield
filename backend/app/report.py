@@ -180,7 +180,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
             if cert.get("sha256"):
                 el.append(Paragraph(f"<b>Cert SHA256:</b> {cert['sha256']}", ss["Body"]))
         for fl in cert.get("flags", []):
-            el.append(Paragraph(f"⚠ <b>{fl['flag']}</b> — {fl['detail']}", ss["Body"]))
+            el.append(Paragraph(f"<b>{fl['flag']}</b> — {fl['detail']}", ss["Body"]))
         if comp.get("count"):
             el.append(Paragraph(
                 f"<b>Exported components:</b> {comp['count']} "

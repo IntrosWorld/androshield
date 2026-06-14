@@ -22,7 +22,10 @@
     <header class="flex items-center justify-between mb-8">
       <div>
         <h1 class="text-2xl font-bold text-white flex items-center gap-2">
-          <span class="text-cyan-400">🛡️</span> APK Fraud Analyzer
+          <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+          </svg>
+          APK Fraud Analyzer
         </h1>
         <p class="text-sm text-slate-400">Generative-AI automated static analysis &amp; risk scoring of fraudulent APKs</p>
       </div>
@@ -33,7 +36,9 @@
     <section id="upload-card" class="glass rounded-2xl p-8 mb-8">
       <div id="dropzone" class="border-2 border-dashed border-slate-600 rounded-xl p-10 text-center cursor-pointer hover:border-cyan-500 transition">
         <input type="file" id="file-input" accept=".apk" class="hidden" />
-        <div class="text-5xl mb-3">📦</div>
+        <svg class="w-12 h-12 mx-auto mb-3 text-cyan-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"></path>
+        </svg>
         <p class="text-lg font-semibold text-white">Drop a suspicious <code>.apk</code> here or click to browse</p>
         <p class="text-sm text-slate-400 mt-1">Static analysis only — the APK is never executed.</p>
         <p id="file-name" class="text-cyan-400 mt-3 text-sm"></p>
@@ -67,7 +72,7 @@
       <div class="grid md:grid-cols-3 gap-6">
         <div class="glass rounded-2xl p-6 flex flex-col items-center justify-center">
           <div class="gauge-wrap">
-            <canvas id="gauge"></canvas>
+            <canvas id="gauge" width="180" height="180"></canvas>
             <div class="gauge-text">
               <span id="score-num" class="text-4xl font-bold text-white">0</span>
               <span class="text-xs text-slate-400">/ 100</span>
@@ -83,16 +88,36 @@
             <span id="threat" class="font-semibold text-white">—</span>
           </div>
           <div class="mt-5 flex flex-wrap gap-2">
-            <button id="pdf-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-lg">⬇ PDF Report</button>
-            <button id="ioc-csv-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-lg">⬇ IOCs (CSV)</button>
-            <button id="ioc-json-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-lg">⬇ IOCs (JSON)</button>
+            <button id="pdf-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-lg inline-flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"></path>
+              </svg>
+              PDF Report
+            </button>
+            <button id="ioc-csv-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-lg inline-flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"></path>
+              </svg>
+              IOCs (CSV)
+            </button>
+            <button id="ioc-json-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-lg inline-flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"></path>
+              </svg>
+              IOCs (JSON)
+            </button>
           </div>
         </div>
       </div>
 
       <!-- AI summary -->
       <div class="glass rounded-2xl p-6">
-        <h3 class="text-lg font-semibold text-white mb-2 flex items-center gap-2">🤖 AI Threat Explanation</h3>
+        <h3 class="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+          <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+          </svg>
+          AI Threat Explanation
+        </h3>
         <p id="exec-summary" class="text-slate-200 mb-3"></p>
         <p id="tech-summary" class="text-slate-400 text-sm"></p>
         <div id="behaviors" class="flex flex-wrap gap-2 mt-4"></div>
@@ -125,43 +150,78 @@
       <!-- YARA + MITRE -->
       <div class="grid md:grid-cols-2 gap-6">
         <div id="yara-card" class="glass rounded-2xl p-6 hidden">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🧬 YARA Signature Matches</h3>
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.504 11.625a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0zm0 0h5.625m0 0l-1.5 1.5M15.129 11.625l-1.5-1.5M16.5 11.625A3.375 3.375 0 1120.25 15"></path>
+            </svg>
+            YARA Signature Matches
+          </h3>
           <div id="yara-body" class="space-y-2"></div>
         </div>
         <div id="mitre-card" class="glass rounded-2xl p-6 hidden">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🎯 MITRE ATT&amp;CK (Mobile)</h3>
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM12 8.25h.008v.008H12V8.25z"></path>
+            </svg>
+            MITRE ATT&amp;CK (Mobile)
+          </h3>
           <div id="mitre-body" class="flex flex-wrap gap-2"></div>
         </div>
       </div>
 
       <!-- Certificate + attack surface -->
       <div id="cert-card" class="glass rounded-2xl p-6 hidden">
-        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">📜 Certificate &amp; Attack Surface</h3>
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+          Certificate &amp; Attack Surface
+        </h3>
         <div id="cert-body" class="text-sm space-y-1.5"></div>
       </div>
 
       <!-- ML + APKiD -->
       <div class="grid md:grid-cols-2 gap-6">
         <div id="ml-card" class="glass rounded-2xl p-6 hidden">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🧠 ML Classifier Verdict</h3>
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path>
+            </svg>
+            ML Classifier Verdict
+          </h3>
           <div id="ml-body" class="text-sm"></div>
         </div>
         <div id="apkid-card" class="glass rounded-2xl p-6 hidden">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🔬 APKiD Fingerprint</h3>
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+            APKiD Fingerprint
+          </h3>
           <div id="apkid-body" class="text-sm space-y-1.5"></div>
         </div>
       </div>
 
       <!-- VirusTotal -->
       <div id="vt-card" class="glass rounded-2xl p-6 hidden">
-        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">🧪 VirusTotal Corroboration</h3>
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+          </svg>
+          VirusTotal Corroboration
+        </h3>
         <div id="vt-body" class="text-sm"></div>
       </div>
 
       <!-- Dynamic analysis (emulator) -->
       <div class="glass rounded-2xl p-6 border-amber-500/20">
         <div class="flex items-center justify-between flex-wrap gap-3">
-          <h3 class="text-lg font-semibold text-white flex items-center gap-2">📲 Dynamic Analysis <span class="text-xs font-normal text-slate-500">(emulator sandbox)</span></h3>
+          <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"></path>
+            </svg>
+            Dynamic Analysis <span class="text-xs font-normal text-slate-500">(emulator sandbox)</span>
+          </h3>
           <span id="emu-status" class="text-xs"></span>
         </div>
         <p class="text-xs text-slate-500 mt-1">Installs &amp; runs the APK in your attached emulator to observe runtime behaviour. Use an isolated AVD.</p>
@@ -178,7 +238,12 @@
           <label class="text-sm text-slate-400 flex items-center gap-1.5">
             <input type="checkbox" id="dyn-frida" class="accent-cyan-500"> Frida hooks
           </label>
-          <button id="dyn-run-btn" class="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm font-semibold px-5 py-2 rounded-lg">▶ Run in Emulator</button>
+          <button id="dyn-run-btn" class="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm font-semibold px-5 py-2 rounded-lg inline-flex items-center gap-1.5">
+            <svg class="w-3 h-3 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 5v14l11-7z"></path>
+            </svg>
+            Run in Emulator
+          </button>
         </div>
         <div id="dyn-loading" class="hidden mt-4 text-sm text-slate-400">
           <span class="inline-block w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin align-middle"></span>
