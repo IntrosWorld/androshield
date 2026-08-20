@@ -1,5 +1,6 @@
 """PDF investigation-report generation via reportlab."""
 import io
+from html import escape as html_escape
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -14,6 +15,11 @@ SEVERITY_COLORS = {
     "High": colors.HexColor("#ef6c00"),
     "Critical": colors.HexColor("#c62828"),
 }
+
+
+def _text(value):
+    """Escape untrusted analysis/report text for ReportLab Paragraph markup."""
+    return html_escape(str(value if value is not None else ""), quote=True)
 
 
 def _styles():
@@ -50,6 +56,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
         ["APK Name", f.get("filename", "—"), "Risk Score", f"{score}/100"],
         ["Package", m.get("package_name", "—"), "Severity", sev],
         ["Version", m.get("version_name", "—"), "Threat", report.get("threat_assessment", "—")],
+        ["Analysis", analysis.get("analysis_quality", "full").title(), "", ""],
         ["SHA256", f.get("sha256", "—"), "", ""],
         ["MD5", f.get("md5", "—"), "", ""],
     ]
@@ -76,17 +83,17 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
 
     def bullets(items):
         for it in items or []:
-            el.append(Paragraph(f"• {it}", ss["Body"]))
+            el.append(Paragraph(f"• {_text(it)}", ss["Body"]))
         if not items:
             el.append(Paragraph("None identified.", ss["Body"]))
 
     # --- Executive summary ---
     section("Executive Summary")
-    el.append(Paragraph(report.get("executive_summary", "—"), ss["Body"]))
+    el.append(Paragraph(_text(report.get("executive_summary", "—")), ss["Body"]))
 
     # --- Technical summary ---
     section("Technical Findings")
-    el.append(Paragraph(report.get("technical_summary", "—"), ss["Body"]))
+    el.append(Paragraph(_text(report.get("technical_summary", "—")), ss["Body"]))
 
     # --- Detected behaviours ---
     section("Detected Behaviours")
@@ -96,7 +103,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
     if report.get("attack_chain"):
         section("Likely Attack Chain")
         for i, step in enumerate(report["attack_chain"], 1):
-            el.append(Paragraph(f"{i}. {step}", ss["Body"]))
+            el.append(Paragraph(f"{i}. {_text(step)}", ss["Body"]))
 
     # --- Risk score breakdown ---
     section("Risk Score Breakdown")
@@ -133,7 +140,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
                        ("Telegram tokens", "telegram_tokens"), ("Hardcoded secrets", "hardcoded_secrets")]:
         vals = iocs.get(key, [])
         if vals:
-            el.append(Paragraph(f"<b>{label}:</b> {', '.join(map(str, vals[:25]))}", ss["Body"]))
+            el.append(Paragraph(f"<b>{label}:</b> {_text(', '.join(map(str, vals[:25])))}", ss["Body"]))
 
     # --- YARA signatures ---
     yara = analysis.get("yara") or {}
@@ -142,7 +149,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
         for ym in yara["matches"]:
             el.append(Paragraph(
                 f"<b>{ym['rule']}</b> ({ym.get('severity', '')}, +{ym.get('score', 0)})"
-                f" — {ym.get('description', '')}"
+                f" — {_text(ym.get('description', ''))}"
                 + (f"  [ATT&CK {ym['attack']}]" if ym.get("attack") else ""),
                 ss["Body"]))
 
@@ -172,7 +179,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
     if cert.get("present") or cert.get("flags") or comp.get("count"):
         section("Signing Certificate & Attack Surface")
         if cert.get("present"):
-            el.append(Paragraph(f"<b>Subject:</b> {cert.get('subject', '—')}", ss["Body"]))
+            el.append(Paragraph(f"<b>Subject:</b> {_text(cert.get('subject', '—'))}", ss["Body"]))
             if cert.get("validity_years") is not None:
                 el.append(Paragraph(
                     f"<b>Validity:</b> {cert.get('validity_years')} years"
@@ -180,7 +187,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
             if cert.get("sha256"):
                 el.append(Paragraph(f"<b>Cert SHA256:</b> {cert['sha256']}", ss["Body"]))
         for fl in cert.get("flags", []):
-            el.append(Paragraph(f"<b>{fl['flag']}</b> — {fl['detail']}", ss["Body"]))
+            el.append(Paragraph(f"<b>{_text(fl['flag'])}</b> — {_text(fl['detail'])}", ss["Body"]))
         if comp.get("count"):
             el.append(Paragraph(
                 f"<b>Exported components:</b> {comp['count']} "
@@ -191,9 +198,9 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
     if apkid.get("findings") or apkid.get("compilers"):
         section("APKiD Fingerprinting")
         for fnd in apkid.get("findings", []):
-            el.append(Paragraph(f"<b>{fnd['category']}:</b> {fnd['name']}", ss["Body"]))
+            el.append(Paragraph(f"<b>{_text(fnd['category'])}:</b> {_text(fnd['name'])}", ss["Body"]))
         if apkid.get("compilers"):
-            el.append(Paragraph(f"<b>Compiler:</b> {', '.join(apkid['compilers'])}", ss["Body"]))
+            el.append(Paragraph(f"<b>Compiler:</b> {_text(', '.join(apkid['compilers']))}", ss["Body"]))
 
     # --- ML classifier ---
     ml = analysis.get("ml") or {}
@@ -223,18 +230,55 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
             el.append(Paragraph(
                 f"<b>{fr.get('malicious', 0)}</b> malicious / {fr.get('suspicious', 0)} suspicious "
                 f"out of {fr.get('total_engines', 0)} engines."
-                + (f" Threat label: <b>{fr.get('threat_label')}</b>." if fr.get("threat_label") else ""),
+                + (f" Threat label: <b>{_text(fr.get('threat_label'))}</b>." if fr.get("threat_label") else ""),
                 ss["Body"]))
             hits = [f"{h['engine']}: {h['result']}" for h in fr.get("engine_hits", [])][:12]
             if hits:
-                el.append(Paragraph("<b>Sample detections:</b> " + "; ".join(hits), ss["Body"]))
+                el.append(Paragraph("<b>Sample detections:</b> " + _text("; ".join(hits)), ss["Body"]))
             if vt.get("flagged_domains"):
                 el.append(Paragraph(
                     "<b>Flagged domains:</b> "
-                    + ", ".join(d["domain"] for d in vt["flagged_domains"]), ss["Body"]))
+                    + _text(", ".join(d["domain"] for d in vt["flagged_domains"])), ss["Body"]))
         else:
-            el.append(Paragraph(fr.get("note") or fr.get("error") or
-                                "Not found on VirusTotal.", ss["Body"]))
+            el.append(Paragraph(_text(fr.get("note") or fr.get("error") or
+                                "Not found on VirusTotal."), ss["Body"]))
+
+    # --- Bounded agentic investigation ---
+    agentic = analysis.get("agentic") or {}
+    if agentic:
+        section("Agentic Evidence Investigation")
+        el.append(Paragraph(
+            f"<b>Status:</b> {_text(agentic.get('status', 'unknown'))} &nbsp; "
+            f"<b>Provider:</b> {_text(agentic.get('provider', 'â€”'))} / "
+            f"{_text(agentic.get('model', 'â€”'))} &nbsp; "
+            f"<b>Steps:</b> {_text(agentic.get('steps_used', 0))}", ss["Body"]))
+        for hypothesis in agentic.get("hypotheses", [])[:10]:
+            evidence = ", ".join(map(str, hypothesis.get("evidence_ids", [])))
+            el.append(Paragraph(
+                f"â€¢ <b>{_text(hypothesis.get('confidence', 'unknown').title())} confidence:</b> "
+                f"{_text(hypothesis.get('claim', ''))}<br/>"
+                f"<font size=8 color='grey'>Evidence: {_text(evidence)}</font>", ss["Body"]))
+        if agentic.get("gaps"):
+            el.append(Paragraph("<b>Evidence gaps:</b>", ss["Body"]))
+            bullets(agentic.get("gaps", [])[:10])
+        if agentic.get("audit"):
+            rows = [["Step", "Action", "Status", "Executed"]]
+            for action in agentic["audit"][:20]:
+                rows.append([
+                    str(action.get("step", "")), action.get("action", ""),
+                    action.get("status", ""),
+                    "No" if action.get("executed") is False else "Yes",
+                ])
+            at = Table(rows, colWidths=[14 * mm, 82 * mm, 48 * mm, 28 * mm])
+            at.setStyle(TableStyle([
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a237e")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]))
+            el.append(at)
 
     # --- Recommendations ---
     section("Recommended Actions")
@@ -243,7 +287,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
     el.append(Spacer(1, 10))
     el.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
     el.append(Paragraph(
-        f"Report generated by {report.get('generated_by', 'analyzer')} • "
+        f"Report generated by {_text(report.get('generated_by', 'analyzer'))} • "
         "Static analysis only — APK was not executed.", ss["Small"]))
 
     doc.build(el)

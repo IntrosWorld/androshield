@@ -277,14 +277,20 @@ PERMISSIONS = [
 DEX_STRINGS = [
     # --- suspicious API signatures (declarative only; never invoked) ---
     "Landroid/telephony/SmsManager;",
+    "sendTextMessage",
     "Landroid/accessibilityservice/AccessibilityService;",
     "Landroid/service/notification/NotificationListenerService;",
     "Landroid/webkit/WebView;",
     "Ldalvik/system/DexClassLoader;",
+    "loadClass",
     "Ljava/lang/Runtime;",
+    "exec",
     "Ljava/net/HttpURLConnection;",
+    "connect",
     "Landroid/content/ClipboardManager;",
+    "getPrimaryClip",
     "Landroid/app/admin/DevicePolicyManager;",
+    "wipeData",
     "Ljava/lang/reflect/Method;",
     "Landroid/util/Base64;",
     # --- network IOCs (non-routable / fake) ---

@@ -12,6 +12,7 @@ CATEGORY_CAPS = {
     "obfuscation": 18,
     "keywords": 12,
     "yara": 40,
+    "correlation": 20,
 }
 
 SEVERITY_BANDS = [
@@ -30,11 +31,26 @@ def severity_for(score: int) -> str:
 
 
 def compute_risk(perm_result, api_result, ioc_result, obf_result, yara_result=None,
-                 apkid_result=None, cert_result=None, comp_result=None):
+                 apkid_result=None, cert_result=None, comp_result=None,
+                 manifest_result=None):
     breakdown = []
 
     # --- Permissions ---
-    perm_score = sum(f["score"] for f in perm_result.get("dangerous", []))
+    # Broad legitimate apps often request many sensitive permissions. Apply diminishing
+    # returns: preserve the strongest capability, half of the second, and one quarter
+    # of the remainder. Correlated fraud chains below restore confidence when those
+    # capabilities form a discriminative combination.
+    perm_weights = sorted(
+        (max(0, f.get("score", 0)) for f in perm_result.get("dangerous", [])),
+        reverse=True,
+    )
+    perm_score = 0
+    if perm_weights:
+        perm_score = perm_weights[0]
+        if len(perm_weights) > 1:
+            perm_score += round(perm_weights[1] * 0.5)
+        if len(perm_weights) > 2:
+            perm_score += round(sum(perm_weights[2:]) * 0.25)
     perm_score = min(perm_score, CATEGORY_CAPS["permissions"])
     if perm_score:
         breakdown.append({
@@ -44,23 +60,28 @@ def compute_risk(perm_result, api_result, ioc_result, obf_result, yara_result=No
         })
 
     # --- Suspicious APIs ---
-    api_score = sum(f["score"] for f in api_result.get("suspicious_apis", []))
+    api_findings = api_result.get("suspicious_apis", [])
+    scored_apis = [f for f in api_findings if f.get("score", 0) > 0]
+    api_score = sum(f["score"] for f in scored_apis)
     api_score = min(api_score, CATEGORY_CAPS["apis"])
     if api_score:
         breakdown.append({
             "category": "Suspicious APIs",
             "points": api_score,
-            "detail": f"{api_result.get('count', 0)} suspicious API(s)",
+            "detail": (f"{len(scored_apis)} risk-relevant API(s)"
+                       + (f"; {len(api_findings) - len(scored_apis)} report-only"
+                          if len(api_findings) > len(scored_apis) else "")),
         })
 
     # --- Network / IOC ---
     counts = ioc_result.get("counts", {})
     net_score = 0
     net_bits = []
-    if counts.get("urls"):
-        net_score += min(counts["urls"], 5); net_bits.append(f"{counts['urls']} URL(s)")
-    if counts.get("ips"):
-        net_score += min(counts["ips"] * 3, 8); net_bits.append(f"{counts['ips']} IP(s)")
+    suspicious_urls = ioc_result.get("suspicious_urls", []) or []
+    scoreable_urls = [u for u in suspicious_urls if u.get("confidence") in ("medium", "high")]
+    if scoreable_urls:
+        net_score += min(sum(u.get("score", 0) for u in scoreable_urls), 10)
+        net_bits.append(f"{len(scoreable_urls)} higher-confidence URL(s)")
     if counts.get("telegram_tokens"):
         net_score += 10; net_bits.append("Telegram bot token")
     if counts.get("secrets"):
@@ -84,14 +105,9 @@ def compute_risk(perm_result, api_result, ioc_result, obf_result, yara_result=No
 
     # --- Suspicious keywords (score only high-signal financial terms; generic words
     #     like "login"/"password" appear in nearly every app and are not scored) ---
-    fin_kw = ioc_result.get("financial_keywords", [])
-    kw_score = min(len(fin_kw) * 3, CATEGORY_CAPS["keywords"])
-    if kw_score:
-        breakdown.append({
-            "category": "Banking/fraud keywords",
-            "points": kw_score,
-            "detail": ", ".join(fin_kw[:8]),
-        })
+    # Credential words are expected in password managers, authenticators, payment
+    # libraries, and UI translations. They remain visible IOC context and only score
+    # through correlated fraud rules below or a capability-qualified YARA match.
 
     # --- YARA signatures ---
     if yara_result and yara_result.get("matches"):
@@ -107,10 +123,11 @@ def compute_risk(perm_result, api_result, ioc_result, obf_result, yara_result=No
     if apkid_result and apkid_result.get("findings"):
         a_score = min(apkid_result.get("score", 0), 30)
         if a_score:
+            scored_findings = [f for f in apkid_result["findings"] if f.get("score", 0) > 0]
             breakdown.append({
                 "category": "Packer / anti-analysis (APKiD)",
                 "points": a_score,
-                "detail": ", ".join(f["name"] for f in apkid_result["findings"][:4]),
+                "detail": ", ".join(f["name"] for f in scored_findings[:4]),
             })
 
     # --- Certificate red-flags ---
@@ -121,12 +138,68 @@ def compute_risk(perm_result, api_result, ioc_result, obf_result, yara_result=No
             "detail": ", ".join(f["flag"] for f in cert_result.get("flags", [])),
         })
 
-    # --- Exported components (attack surface) ---
-    if comp_result and comp_result.get("score"):
+    # Exported components are a vulnerability/attack-surface finding, not evidence that
+    # the APK itself is malicious. They remain in the report but do not raise malware risk.
+
+    # --- Correlated fraud chains ---
+    # Combinations are more discriminative than isolated permissions or library calls.
+    perms = {p.get("name") for p in perm_result.get("dangerous", [])}
+    all_perms = {p.rsplit(".", 1)[-1] for p in perm_result.get("all_permissions", [])}
+    apis = {a.get("api") for a in api_result.get("suspicious_apis", [])}
+    invoked_apis = {
+        a.get("api") for a in api_result.get("suspicious_apis", [])
+        if a.get("evidence_type", "invoked") == "invoked"
+    }
+    has_network = bool(
+        "INTERNET" in all_perms
+        or counts.get("urls")
+        or invoked_apis & {"HttpURLConnection", "OkHttp", "Raw Socket"}
+    )
+    correlation_score = 0
+    correlation_bits = []
+    if perms & {"READ_SMS", "RECEIVE_SMS"} and has_network:
+        correlation_score += 8
+        correlation_bits.append("SMS interception + outbound channel")
+    if "BIND_ACCESSIBILITY_SERVICE" in perms and "SYSTEM_ALERT_WINDOW" in perms:
+        correlation_score += 8
+        correlation_bits.append("accessibility automation + overlay")
+    if "REQUEST_INSTALL_PACKAGES" in perms and apis & {"DexClassLoader", "PathClassLoader"}:
+        correlation_score += 8
+        correlation_bits.append("package installation + runtime code loading")
+    if ioc_result.get("financial_keywords") and (
+            perms & {"SYSTEM_ALERT_WINDOW", "BIND_ACCESSIBILITY_SERVICE", "READ_SMS", "RECEIVE_SMS"}):
+        correlation_score += 6
+        correlation_bits.append("financial targeting + credential/OTP capability")
+    has_suspicious_network = bool(
+        scoreable_urls or counts.get("telegram_tokens") or counts.get("secrets")
+    )
+    if "NotificationListenerService" in apis and has_suspicious_network:
+        correlation_score += 5
+        correlation_bits.append("notification access + suspicious outbound indicator")
+    yara_rules = {m.get("rule") for m in (yara_result or {}).get("matches", [])}
+    apkid_categories = {f.get("category") for f in (apkid_result or {}).get("findings", [])}
+    if "DexClassLoader" in invoked_apis and (
+            "Dynamic_Dropper" in yara_rules
+            or apkid_categories & {"Packer", "Protector", "Dropper"}):
+        correlation_score += 10
+        correlation_bits.append("invoked runtime loading + dropper/packer signature")
+    if "DexClassLoader" in invoked_apis and obf_result.get("score", 0) >= 8:
+        correlation_score += 8
+        correlation_bits.append("invoked runtime loading + obfuscated payload path")
+        manifest_result = manifest_result or {}
+        has_background_entry = bool(
+            manifest_result.get("services") or manifest_result.get("receivers")
+        )
+        if ("RECEIVE_BOOT_COMPLETED" in perms and has_background_entry
+                and not manifest_result.get("main_activity")):
+            correlation_score += 8
+            correlation_bits.append("boot persistence + background-only entry points")
+    correlation_score = min(correlation_score, CATEGORY_CAPS["correlation"])
+    if correlation_score:
         breakdown.append({
-            "category": "Exported components",
-            "points": min(comp_result["score"], 10),
-            "detail": f"{comp_result.get('unguarded_count', 0)} unguarded exported component(s)",
+            "category": "Correlated fraud behaviours",
+            "points": correlation_score,
+            "detail": "; ".join(correlation_bits),
         })
 
     total = min(sum(b["points"] for b in breakdown), 100)
@@ -147,13 +220,14 @@ def apply_ml(analysis: dict, ml: dict) -> dict:
     if not ml or not ml.get("available") or ml.get("error") is not None:
         return analysis
     prob = ml.get("malware_probability", 0.0)
-    if prob >= 0.5:
+    threshold = ml.get("decision_threshold", 0.8)
+    if prob >= threshold and ml.get("prediction") in ("flagged", "malware"):
         points = min(round(prob * 20), 20)
         if points:
             analysis.setdefault("score_breakdown", []).append({
                 "category": "ML classifier",
                 "points": points,
-                "detail": f"malware probability {prob:.0%}",
+                "detail": f"malware probability {prob:.0%} (threshold {threshold:.0%})",
             })
             total = min(sum(b["points"] for b in analysis["score_breakdown"]), 100)
             analysis["risk_score"] = total
@@ -194,14 +268,20 @@ def apply_virustotal(analysis: dict, vt: dict) -> dict:
                                          if file_res.get("threat_label") else ""),
         })
         total = min(sum(b["points"] for b in analysis["score_breakdown"]), 100)
+        # A single engine can be a false positive. Independent agreement establishes a
+        # minimum confidence band. Add the adjustment as an explicit contribution so
+        # the numeric score, severity, and itemised breakdown remain consistent.
+        floor = 71 if malicious >= 5 else (41 if malicious >= 3 else 0)
+        if floor and total < floor:
+            adjustment = floor - total
+            analysis["score_breakdown"].append({
+                "category": "Multi-engine consensus floor",
+                "points": adjustment,
+                "detail": f"{malicious} independent engines agree",
+            })
+            total = floor
         analysis["risk_score"] = total
-        sev = severity_for(total)
-        # Floor: real multi-engine detection should never read below High/Critical.
-        if malicious >= 5 and sev != "Critical":
-            sev = "Critical"
-        elif malicious >= 1 and sev in ("Low", "Medium"):
-            sev = "High"
-        analysis["severity"] = sev
+        analysis["severity"] = severity_for(total)
 
     return analysis
 
@@ -217,20 +297,33 @@ def derive_behaviors(perm_result, api_result, ioc_result, obf_result):
     if "BIND_ACCESSIBILITY_SERVICE" in perms or "AccessibilityService" in apis:
         behaviors.add("Accessibility abuse (screen scraping / auto-click)")
     if "SYSTEM_ALERT_WINDOW" in perms:
-        behaviors.add("Overlay attack (fake login screen)")
+        if "BIND_ACCESSIBILITY_SERVICE" in perms or ioc_result.get("financial_keywords"):
+            behaviors.add("Potential overlay attack (fake login screen)")
+        else:
+            behaviors.add("Overlay capability")
     if "NotificationListenerService" in apis:
         behaviors.add("Notification / alert stealing")
-    if "REQUEST_INSTALL_PACKAGES" in perms or "DexClassLoader" in apis:
+    if "DexClassLoader" in apis or (
+            "REQUEST_INSTALL_PACKAGES" in perms and "PathClassLoader" in apis):
         behaviors.add("Dropper / dynamic payload loading")
-    if ioc_result.get("counts", {}).get("urls") or "HttpURLConnection" in apis or "OkHttp" in apis:
-        behaviors.add("Remote server communication / data exfiltration")
+    elif "REQUEST_INSTALL_PACKAGES" in perms:
+        behaviors.add("APK installation capability")
+    network_api = apis & {"HttpURLConnection", "OkHttp", "Raw Socket"}
+    sensitive_access = perms & {
+        "READ_SMS", "RECEIVE_SMS", "READ_CONTACTS", "READ_CALL_LOG",
+        "BIND_ACCESSIBILITY_SERVICE",
+    }
+    if ioc_result.get("suspicious_urls") and sensitive_access:
+        behaviors.add("Potential command-and-control / data-exfiltration path")
+    elif ioc_result.get("counts", {}).get("urls") or network_api:
+        behaviors.add("Network communication capability / embedded endpoints")
     if ioc_result.get("counts", {}).get("telegram_tokens"):
         behaviors.add("Telegram-based C2 / exfiltration")
     if "READ_CONTACTS" in perms:
         behaviors.add("Contact harvesting / victim spreading")
     if obf_result.get("is_obfuscated"):
         behaviors.add("Code obfuscation / evasion")
-    if "BIND_DEVICE_ADMIN" in perms or "DevicePolicyManager" in apis:
+    if "BIND_DEVICE_ADMIN" in perms or "DevicePolicyManager abuse" in apis:
         behaviors.add("Device-admin abuse (anti-removal)")
 
     return sorted(behaviors)

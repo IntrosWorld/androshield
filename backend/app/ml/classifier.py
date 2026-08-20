@@ -70,13 +70,17 @@ def predict(analysis: dict) -> dict:
             present.append(feat)
     present = present[:8]
 
-    prediction = "malware" if proba >= 0.5 else "benign"
-    confidence = proba if proba >= 0.5 else 1.0 - proba
+    decision_threshold = float(bundle.get("operating_threshold", 0.8))
+    # Below a conservative alert threshold means "no ML alert", not proof that an
+    # APK is benign. Other static evidence can still establish high risk.
+    prediction = "flagged" if proba >= decision_threshold else "not_flagged"
+    confidence = proba if prediction == "flagged" else None
     return {
         "available": True,
         "malware_probability": round(proba, 4),
         "prediction": prediction,
-        "confidence": round(confidence, 4),
+        "decision_threshold": round(decision_threshold, 4),
+        "confidence": round(confidence, 4) if confidence is not None else None,
         "contributing_permissions": present,
         "model_metrics": bundle.get("metrics", {}),
         "trained_at": bundle.get("trained_at"),

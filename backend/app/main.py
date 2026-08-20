@@ -12,6 +12,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 # Load backend/.env regardless of where uvicorn is launched from.
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -24,15 +25,54 @@ from .genai import gemini_client
 from .intel import virustotal, apkid_scan
 from .ml import classifier as ml_classifier
 from .dynamic import sandbox as dyn_sandbox, frida_runner
+from .agent import orchestrator as agent_orchestrator
 from . import db, report as report_pdf
 
-MAX_UPLOAD_MB = 200
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
+UPLOAD_CHUNK_BYTES = 1024 * 1024
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
 
 app = FastAPI(title="APK Fraud Analyzer", version="1.0.0")
+cors_origins = [o.strip() for o in os.getenv(
+    "CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
+).split(",") if o.strip()]
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware, allow_origins=cors_origins,
+    allow_methods=["GET", "POST"], allow_headers=["Content-Type"],
 )
+
+
+async def _spool_upload(file: UploadFile) -> tuple[str, int]:
+    """Stream an upload to a temporary file with a hard byte limit.
+
+    Reading the whole request before checking its length allowed a single large upload
+    to exhaust server memory. This helper is shared by static and dynamic analysis and
+    removes a partial temporary file on every failure path.
+    """
+    limit = MAX_UPLOAD_MB * 1024 * 1024
+    path = None
+    total = 0
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".apk") as tmp:
+            path = tmp.name
+            while True:
+                chunk = await file.read(UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > limit:
+                    raise HTTPException(
+                        413, f"File too large (> {MAX_UPLOAD_MB} MB)"
+                    )
+                tmp.write(chunk)
+        return path, total
+    except Exception:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        raise
 
 
 @app.on_event("startup")
@@ -57,7 +97,13 @@ def health():
         "analyzer_ready": static_analyzer.engine_available(),
         "dynamic": dyn_sandbox.status(),
         "frida_available": frida_runner.available(),
+        "agentic": agent_orchestrator.agent_health(check_provider=False),
     }
+
+
+@app.get("/api/agent/health")
+def agent_health():
+    return agent_orchestrator.agent_health(check_provider=True)
 
 
 @app.post("/api/analyze")
@@ -68,20 +114,13 @@ async def analyze(file: UploadFile = File(...)):
             "Static-analysis engine (androguard) is not available in the server's Python "
             "environment. Start the server from backend/.venv so dependencies are loaded.",
         )
-    if not file.filename.lower().endswith(".apk"):
+    if not (file.filename or "").lower().endswith(".apk"):
         raise HTTPException(400, "Please upload a .apk file")
-
-    data = await file.read()
-    size_mb = len(data) / (1024 * 1024)
-    if size_mb > MAX_UPLOAD_MB:
-        raise HTTPException(413, f"File too large ({size_mb:.1f} MB > {MAX_UPLOAD_MB} MB)")
 
     # Write to a temp file for androguard; never executed.
     tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".apk") as tmp:
-            tmp.write(data)
-            tmp_path = tmp.name
+        tmp_path, _size = await _spool_upload(file)
         # Preserve the original filename in the result.
         analysis = static_analyzer.analyze(tmp_path)
         analysis["file"]["filename"] = file.filename
@@ -96,6 +135,21 @@ async def analyze(file: UploadFile = File(...)):
             )
             risk_scoring.apply_virustotal(analysis, vt)
 
+        agent_config = agent_orchestrator.agent_health(check_provider=False)
+        if analysis.get("valid_apk") and agent_config["enabled"] and agent_config["auto_run"]:
+            score_before = (
+                analysis.get("risk_score"), analysis.get("severity"),
+                list(analysis.get("score_breakdown", [])),
+            )
+            investigation = await run_in_threadpool(agent_orchestrator.run_investigation, analysis)
+            score_after = (
+                analysis.get("risk_score"), analysis.get("severity"),
+                list(analysis.get("score_breakdown", [])),
+            )
+            if score_after != score_before:
+                raise RuntimeError("agent invariant violated: deterministic score changed")
+            analysis["agentic"] = gemini_client.review_investigation(analysis, investigation)
+
         report = gemini_client.generate_report(analysis)
         sample_id = db.save_sample(analysis, report)
 
@@ -104,6 +158,8 @@ async def analyze(file: UploadFile = File(...)):
             "analysis": analysis,
             "report": report,
         })
+    except HTTPException:
+        raise
     except Exception as e:
         log.exception("Analysis failed")
         raise HTTPException(500, f"Analysis failed: {e}")
@@ -113,6 +169,38 @@ async def analyze(file: UploadFile = File(...)):
                 os.remove(tmp_path)
             except OSError:
                 pass
+
+
+@app.post("/api/agent/investigate/{sample_id}")
+async def investigate_sample(sample_id: str):
+    """Run the bounded agent over saved extracted evidence; never reopens the APK."""
+    config = agent_orchestrator.agent_health(check_provider=False)
+    if not config["enabled"]:
+        raise HTTPException(409, "Agentic investigation is disabled; set AGENT_ENABLED=true")
+    saved = db.get_sample(sample_id)
+    if not saved:
+        raise HTTPException(404, "Sample not found")
+    analysis = saved["analysis"]
+    if not analysis.get("valid_apk") or analysis.get("risk_score") is None:
+        raise HTTPException(409, "Agentic investigation requires completed static findings")
+    score_before = (
+        analysis.get("risk_score"), analysis.get("severity"),
+        list(analysis.get("score_breakdown", [])),
+    )
+    investigation = await run_in_threadpool(agent_orchestrator.run_investigation, analysis)
+    score_after = (
+        analysis.get("risk_score"), analysis.get("severity"),
+        list(analysis.get("score_breakdown", [])),
+    )
+    if score_after != score_before:
+        log.critical("Agent attempted to alter deterministic scoring state")
+        raise HTTPException(500, "Agent scoring invariant failed")
+    investigation = gemini_client.review_investigation(analysis, investigation)
+    analysis["agentic"] = investigation
+    refreshed_report = gemini_client.generate_report(analysis)
+    if not db.update_sample_artifacts(sample_id, analysis, refreshed_report):
+        raise HTTPException(404, "Sample disappeared during investigation")
+    return {"id": sample_id, "agentic": investigation, "report": refreshed_report}
 
 
 def _apk_identity(apk_path):
@@ -138,18 +226,19 @@ async def dynamic_analyze(
     It runs ONLY inside the emulator the user has attached, never on the host. Use an
     isolated AVD for real malware.
     """
-    if not file.filename.lower().endswith(".apk"):
+    if not (file.filename or "").lower().endswith(".apk"):
         raise HTTPException(400, "Please upload a .apk file")
     st = dyn_sandbox.status()
     if not st.get("available"):
         raise HTTPException(503, st.get("reason", "No emulator/device available."))
 
-    data = await file.read()
     tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".apk") as tmp:
-            tmp.write(data)
-            tmp_path = tmp.name
+        if serial:
+            connected = {d.get("serial") for d in st.get("devices", [])}
+            if serial not in connected:
+                raise HTTPException(400, "Selected emulator/device is not connected")
+        tmp_path, _size = await _spool_upload(file)
         package, main_activity = _apk_identity(tmp_path)
         if not package:
             raise HTTPException(400, "Could not read package name — not a valid APK?")

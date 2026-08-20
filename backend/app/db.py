@@ -76,6 +76,18 @@ def save_sample(analysis: dict, report: dict) -> str:
     return sample_id
 
 
+def update_sample_artifacts(sample_id: str, analysis: dict, report: dict) -> bool:
+    """Persist a post-analysis agent investigation/report refresh."""
+    with _conn() as con:
+        cur = con.execute(
+            """UPDATE apk_samples
+               SET analysis_json = ?, report_json = ?
+               WHERE id = ?""",
+            (json.dumps(analysis), json.dumps(report), sample_id),
+        )
+    return cur.rowcount == 1
+
+
 def get_sample(sample_id: str):
     with _conn() as con:
         row = con.execute("SELECT * FROM apk_samples WHERE id = ?", (sample_id,)).fetchone()

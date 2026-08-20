@@ -65,7 +65,9 @@ def scan(dex_strings, permissions=None, package_name=""):
         return {"available": True, "matches": [], "score": 0, "error": "rules failed to compile"}
 
     blob_parts = list(dex_strings or [])
-    blob_parts += list(permissions or [])
+    # Namespace manifest declarations so a permission-name constant embedded in a
+    # dependency cannot masquerade as a capability the app actually requests.
+    blob_parts += [f"MANIFEST_PERMISSION:{p}" for p in (permissions or [])]
     if package_name:
         blob_parts.append(package_name)
     blob = "\n".join(p for p in blob_parts if p)

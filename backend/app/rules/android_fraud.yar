@@ -16,13 +16,14 @@ rule SMS_OTP_Stealer
         score = "20"
         attack = "T1582"
     strings:
-        $sms1 = "android.permission.READ_SMS"
-        $sms2 = "android.permission.RECEIVE_SMS"
-        $api  = "Landroid/telephony/SmsManager;"
+        $sms1 = "MANIFEST_PERMISSION:android.permission.READ_SMS"
+        $sms2 = "MANIFEST_PERMISSION:android.permission.RECEIVE_SMS"
+        $internet = "MANIFEST_PERMISSION:android.permission.INTERNET"
         $net1 = "Ljava/net/HttpURLConnection;"
-        $net2 = "http"
     condition:
-        (any of ($sms1, $sms2) or $api) and (any of ($net1, $net2))
+        // Generic dependencies commonly contain SmsManager and "http" strings.
+        // Require an app-declared SMS-reading capability plus an outbound channel.
+        any of ($sms1, $sms2) and any of ($internet, $net1)
 }
 
 rule Accessibility_Overlay_Trojan
@@ -33,9 +34,9 @@ rule Accessibility_Overlay_Trojan
         score = "25"
         attack = "T1417.002"
     strings:
-        $acc1 = "android.permission.BIND_ACCESSIBILITY_SERVICE"
+        $acc1 = "MANIFEST_PERMISSION:android.permission.BIND_ACCESSIBILITY_SERVICE"
         $acc2 = "Landroid/accessibilityservice/AccessibilityService;"
-        $ovl  = "android.permission.SYSTEM_ALERT_WINDOW"
+        $ovl  = "MANIFEST_PERMISSION:android.permission.SYSTEM_ALERT_WINDOW"
     condition:
         (any of ($acc1, $acc2)) and $ovl
 }
@@ -49,8 +50,15 @@ rule Notification_Listener_Theft
         attack = "T1517"
     strings:
         $n = "Landroid/service/notification/NotificationListenerService;"
+        $k1 = "otp" nocase
+        $k2 = "bank" nocase
+        $k3 = "card number" nocase
+        $k4 = "cvv" nocase
+        $k5 = "netbanking" nocase
     condition:
-        $n
+        // Wearables, launchers and automation tools legitimately mirror notifications.
+        // Require credential/banking targeting before treating it as theft evidence.
+        $n and 2 of ($k*)
 }
 
 rule Dynamic_Dropper
@@ -63,9 +71,9 @@ rule Dynamic_Dropper
     strings:
         $dex = "Ldalvik/system/DexClassLoader;"
         $inmem = "Ldalvik/system/InMemoryDexClassLoader;"
-        $inst = "android.permission.REQUEST_INSTALL_PACKAGES"
+        $inst = "MANIFEST_PERMISSION:android.permission.REQUEST_INSTALL_PACKAGES"
     condition:
-        any of ($dex, $inmem) or $inst
+        any of ($dex, $inmem) and $inst
 }
 
 rule Telegram_C2_Exfil
@@ -92,7 +100,7 @@ rule Device_Admin_AntiRemoval
         attack = "T1626.001"
     strings:
         $api  = "Landroid/app/admin/DevicePolicyManager;"
-        $perm = "android.permission.BIND_DEVICE_ADMIN"
+        $perm = "MANIFEST_PERMISSION:android.permission.BIND_DEVICE_ADMIN"
         $recv = "android.app.action.DEVICE_ADMIN_ENABLED"
     condition:
         // The API alone is referenced by libraries in benign apps; require the app to
@@ -114,6 +122,12 @@ rule Banking_Credential_Keywords
         $k4 = "upi" nocase
         $k5 = "otp" nocase
         $k6 = "card number" nocase
+        $sms1 = "MANIFEST_PERMISSION:android.permission.READ_SMS"
+        $sms2 = "MANIFEST_PERMISSION:android.permission.RECEIVE_SMS"
+        $accessibility = "MANIFEST_PERMISSION:android.permission.BIND_ACCESSIBILITY_SERVICE"
     condition:
-        3 of them
+        // Overlay alone is legitimate in media/floating-window apps. Credential terms
+        // need an OTP-reading or accessibility capability before they become phishing
+        // evidence.
+        3 of ($k*) and any of ($sms*, $accessibility)
 }

@@ -11,7 +11,6 @@ backend/data/
 # --- Samples / artifacts (never commit malware or large binaries) ---
 samples/
 *.apk
+test/
 tools/frida/
 tools/dumps/
-
-

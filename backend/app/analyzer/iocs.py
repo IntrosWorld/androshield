@@ -6,7 +6,9 @@ Also auto-decodes Base64/hex blobs and re-scans the decoded text — a common wa
 malware hides C2 URLs and keywords from a naive string scan.
 """
 import base64
+import ipaddress
 import re
+from urllib.parse import urlsplit
 
 _B64_RE = re.compile(r"^[A-Za-z0-9+/]{16,}={0,2}$")
 _HEX_RE = re.compile(r"^(?:[0-9a-fA-F]{2}){8,}$")
@@ -78,10 +80,60 @@ BENIGN_DOMAIN_SUFFIXES = (
     "json.org", "slf4j.org", "bouncycastle.org",
 )
 
+# TLDs are not malicious by themselves, but these low-cost/abuse-heavy namespaces are
+# useful weak evidence when combined with fraud paths or other capabilities. This list
+# intentionally affects only explainable URL triage; it never produces a verdict alone.
+HIGHER_RISK_TLDS = {
+    "xyz", "top", "tk", "ml", "ga", "cf", "gq", "icu", "vip", "cc", "fun",
+}
+_SENSITIVE_PATH_RE = re.compile(
+    r"(?:^|[/_.-])(login|signin|verify|bank|otp|upload|exfil|gate|panel|c2|beacon)(?:[/_.-]|$)",
+    re.IGNORECASE,
+)
+
 
 def _is_benign_domain(d: str) -> bool:
     dl = d.lower()
-    return any(dl == s or dl.endswith("." + s) or dl.endswith(s) for s in BENIGN_DOMAIN_SUFFIXES)
+    # Require a DNS label boundary. A raw suffix check would incorrectly trust attacker
+    # domains such as ``notgoogle.com`` because they end with ``google.com``.
+    return any(dl == s or dl.endswith("." + s) for s in BENIGN_DOMAIN_SUFFIXES)
+
+
+def _url_risk(url: str):
+    """Return weak, transparent risk reasons for a statically embedded URL."""
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+    except (TypeError, ValueError):
+        return []
+    if not host or _is_benign_domain(host):
+        return []
+
+    reasons = []
+    try:
+        address = ipaddress.ip_address(host)
+        reasons.append("private/local IP host" if address.is_private or address.is_loopback
+                       else "literal IP host")
+    except ValueError:
+        tld = host.rsplit(".", 1)[-1] if "." in host else ""
+        if tld in HIGHER_RISK_TLDS:
+            reasons.append(f"higher-risk .{tld} domain")
+        if host.startswith("xn--") or ".xn--" in host:
+            reasons.append("internationalized/punycode domain")
+
+    path = parsed.path or ""
+    if _SENSITIVE_PATH_RE.search(path):
+        reasons.append("fraud/C2-like path")
+    try:
+        if parsed.port and parsed.port not in (80, 443):
+            reasons.append(f"non-standard port {parsed.port}")
+    except ValueError:
+        reasons.append("malformed port")
+    if parsed.username or parsed.password:
+        reasons.append("credentials embedded in URL")
+    if parsed.scheme.lower() == "http" and len(reasons) > 0:
+        reasons.append("cleartext HTTP")
+    return reasons
 
 
 def extract_iocs(dex_strings, max_each: int = 200):
@@ -125,11 +177,33 @@ def extract_iocs(dex_strings, max_each: int = 200):
         if host and not IP_RE.fullmatch(host) and not _is_benign_domain(host):
             domains.add(host.lower())
 
+    suspicious_urls = []
+    for url in sorted(urls):
+        reasons = _url_risk(url)
+        if reasons:
+            stronger = (
+                "literal IP host", "internationalized/punycode domain",
+                "credentials embedded in URL",
+            )
+            confidence = "medium" if (
+                any(r in stronger for r in reasons)
+                or any(r.startswith("higher-risk .") for r in reasons)
+            ) else "low"
+            # Multiple independent properties increase confidence, but a URL remains
+            # weak evidence and is capped well below a behavioral detector.
+            suspicious_urls.append({
+                "url": url,
+                "reasons": reasons,
+                "score": min(2 + max(0, len(reasons) - 1), 5),
+                "confidence": confidence,
+            })
+
     def cap(it):
         return sorted(it)[:max_each]
 
     return {
         "urls": cap(urls),
+        "suspicious_urls": suspicious_urls[:max_each],
         "ips": cap(ips),
         "domains": cap(domains),
         "firebase_endpoints": cap(firebase),
@@ -143,6 +217,7 @@ def extract_iocs(dex_strings, max_each: int = 200):
         "decoded_blobs": len(decoded),
         "counts": {
             "urls": len(urls), "ips": len(ips), "domains": len(domains),
+            "suspicious_urls": len(suspicious_urls),
             "telegram_tokens": len(telegram), "secrets": len(secrets),
             "keywords": len(keywords),
             "financial_keywords": sum(1 for k in keywords if k in FINANCIAL_KEYWORDS),

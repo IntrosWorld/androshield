@@ -60,7 +60,7 @@ _RULES = [
     # Discovery
     ("T1418", "perm", "QUERY_ALL_PACKAGES"),
     ("T1426", "perm", "READ_PHONE_STATE"),
-    ("T1426", "api", "TelephonyManager.getDeviceId"),
+    ("T1426", "api", "Telephony identifiers"),
     # Runtime code / execution
     ("T1407", "api", "DexClassLoader"),
     ("T1623", "api", "Runtime.exec"),
@@ -69,12 +69,12 @@ _RULES = [
     ("T1437", "api", "HttpURLConnection"),
     ("T1437", "api", "OkHttp"),
     ("T1437", "api", "Raw Socket"),
-    ("T1521", "api", "Cipher (crypto)"),
-    ("T1646", "behavior", "Remote server communication / data exfiltration"),
+    ("T1521", "api", "Cipher operation"),
+    ("T1646", "behavior", "Potential command-and-control / data-exfiltration path"),
     ("T1646", "behavior", "Telegram-based C2 / exfiltration"),
     # Device admin / persistence
     ("T1626.001", "perm", "BIND_DEVICE_ADMIN"),
-    ("T1626.001", "api", "DevicePolicyManager"),
+    ("T1626.001", "api", "DevicePolicyManager abuse"),
     ("T1398", "perm", "RECEIVE_BOOT_COMPLETED"),
     # Obfuscation / masquerading
     ("T1655", "behavior", "Code obfuscation / evasion"),

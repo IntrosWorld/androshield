@@ -123,6 +123,22 @@
         <div id="behaviors" class="flex flex-wrap gap-2 mt-4"></div>
       </div>
 
+      <!-- Bounded agentic investigation -->
+      <div id="agent-card" class="glass rounded-2xl p-6 border-cyan-500/20">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 class="text-lg font-semibold text-white">Agentic Evidence Investigation</h3>
+            <p class="text-xs text-slate-500 mt-1">Local, allowlisted and read-only. The agent cannot execute the APK or change its score.</p>
+          </div>
+          <button id="agent-run-btn" class="bg-cyan-700 hover:bg-cyan-600 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm px-4 py-2 rounded-lg" disabled>
+            Run AI Investigation
+          </button>
+        </div>
+        <div id="agent-body" class="mt-4 text-sm text-slate-400">
+          Agentic investigation is not enabled for this server.
+        </div>
+      </div>
+
       <!-- Grid: breakdown + permissions -->
       <div class="grid md:grid-cols-2 gap-6">
         <div class="glass rounded-2xl p-6">

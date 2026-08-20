@@ -24,8 +24,8 @@ _TAG_WEIGHTS = {
     "protector": (12, "Protector"),
     # Anti-VM/anti-debug are individually noisy — e.g. reading Build.FINGERPRINT (common
     # in benign crash-reporting) trips APKiD's anti-VM rules — so weighted low.
-    "anti_vm": (3, "Anti-VM"),
-    "anti_debug": (3, "Anti-debug"),
+    "anti_vm": (0, "Anti-VM"),
+    "anti_debug": (0, "Anti-debug"),
     "anti_disassembly": (6, "Anti-disassembly"),
     "dropper": (15, "Dropper"),
     "abnormal": (4, "Abnormal structure"),
@@ -33,6 +33,12 @@ _TAG_WEIGHTS = {
 # Reported but not scored (too common / benign in normal release builds).
 _REPORT_ONLY_TAGS = {"obfuscator", "manipulator"}
 _SKIP_TAGS = {"file_type"}
+_TAG_CAPS = {
+    # Multiple Build.* checks are usually one library's emulator-detection routine, not
+    # independent evidence. Cap noisy categories across the whole APK.
+    "anti_vm": 3,
+    "anti_debug": 3,
+}
 
 
 def available() -> bool:
@@ -78,6 +84,7 @@ def scan(apk_path: str) -> dict:
     findings = []
     compilers = []
     score = 0
+    tag_scores = {}
     for entry, matches in (raw or {}).items():
         for m in matches:
             tags = list(getattr(m, "tags", []) or [])
@@ -106,9 +113,12 @@ def scan(apk_path: str) -> dict:
                 if key in seen:
                     continue
                 seen.add(key)
+                cap = _TAG_CAPS.get(primary, 30)
+                awarded = min(pts, max(0, cap - tag_scores.get(primary, 0)))
+                tag_scores[primary] = tag_scores.get(primary, 0) + awarded
                 findings.append({"category": label, "name": desc,
-                                 "detail": entry.split("!")[-1], "score": pts})
-                score += pts
+                                 "detail": entry.split("!")[-1], "score": awarded})
+                score += awarded
             elif primary in _REPORT_ONLY_TAGS:
                 key = (primary, desc)
                 if key not in seen:
