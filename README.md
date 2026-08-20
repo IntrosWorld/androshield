@@ -4,8 +4,22 @@ Upload a suspicious Android APK → automated **static analysis** (manifest, per
 suspicious APIs, IOCs, obfuscation) → transparent **rule-based risk score** → **Gemini**
 investigation report → PDF export. Built for banking-fraud / SOC first-level triage.
 
-> Static analysis only — uploaded APKs are **never executed**. See `plan.md` for the full
-> roadmap (dynamic sandbox + ML classifier are future phases).
+> The default `/api/analyze` pipeline is **strictly static** and never executes an APK.
+> Runtime analysis is a separate, explicit `/api/dynamic` action that targets an attached
+> isolated emulator only.
+
+## 📚 Full documentation
+
+**[docs/](docs/README.md)** — a complete guide from pure basics to advanced internals:
+
+| | | |
+|---|---|---|
+| [01 Foundations](docs/01-foundations.md) | [02 Threat Model](docs/02-threat-model.md) | [03 Architecture](docs/03-architecture.md) |
+| [04 Static Pipeline](docs/04-static-analysis-pipeline.md) | [05 Risk Scoring](docs/05-risk-scoring.md) | [06 GenAI Reporting](docs/06-genai-reporting.md) |
+| [07 Agentic Investigation](docs/07-agentic-investigation.md) | [08 ML Classifier](docs/08-ml-classifier.md) | [09 Dynamic Analysis](docs/09-dynamic-analysis.md) |
+| [10 API Reference](docs/10-api-reference.md) | [11 Frontend](docs/11-frontend.md) | [12 Deployment & Ops](docs/12-deployment-and-ops.md) |
+| [13 Evaluation & Accuracy](docs/13-evaluation-and-accuracy.md) | [14 Security Model](docs/14-security-model.md) | [15 Extending](docs/15-extending.md) |
+| [16 Glossary](docs/16-glossary.md) | | |
 
 ## Quick start (Windows / PowerShell)
 
@@ -70,6 +84,7 @@ C2 domains + IP, a fake Telegram bot token, banking keywords, obfuscation signal
 | MITRE ATT&CK | `analyzer/mitre.py` | maps findings to ATT&CK Mobile technique IDs (offline) |
 | Risk score | `analyzer/risk_scoring.py` | 0–100 + severity + itemised breakdown (hybrid: rules + ML) |
 | Threat intel | `intel/virustotal.py` | VirusTotal multi-engine corroboration (optional) |
+| Agentic investigation | `agent/` | bounded Ollama/Gemini evidence-tool loop + action audit |
 | AI report | `genai/gemini_client.py` | exec summary, attack chain, recommendations |
 | Export | `report.py` | PDF investigation report |
 
@@ -80,11 +95,52 @@ Set `VT_API_KEY` in `.env` (free key: https://www.virustotal.com/gui/my-apikey �
 shows real multi-engine detections, and folds them into the risk score (a confirmed
 multi-engine hit floors severity at High/Critical). With no key it's a silent no-op.
 
+### Bounded agentic investigation (optional)
+
+The agent can autonomously select and sequence server-defined evidence tools after the
+static score is complete. Its automatic tools are read-only: manifest, permissions,
+suspicious APIs, network indicators, signatures, attack surface, and score rationale.
+Requests for external intelligence or emulator execution are recorded as
+`approval_required` and are never executed by the agent. The model has no shell,
+arbitrary filesystem, arbitrary HTTP, raw APK, or score-writing capability.
+
+The recommended local model is `qwen3:8b`; Gemini can instead act as the planner with
+`AGENT_PROVIDER=gemini`, or review local hypotheses when `AGENT_GEMINI_REVIEW=true`.
+
+```powershell
+# One-time model installation (Ollama is already configured separately):
+ollama pull qwen3:8b
+
+# backend/.env
+AGENT_ENABLED=true
+AGENT_PROVIDER=ollama
+OLLAMA_MODEL=qwen3:8b
+AGENT_AUTO_RUN=false
+AGENT_MAX_STEPS=8
+AGENT_MAX_TOOL_CALLS=4
+```
+
+With automatic mode off, analyze and save an APK first, then use the dashboard's
+**Run AI Investigation** button or `POST /api/agent/investigate/{sample_id}`. Provider
+status is available from `GET /api/agent/health`. CPU-only inference may take several
+minutes, so execution is moved to a worker thread and does not block FastAPI's event
+loop. A harmless live smoke test is available:
+
+```powershell
+cd backend
+$env:AGENT_ENABLED="true"
+.venv\Scripts\python.exe -u tools\smoke_agent.py
+```
+
+The risk score remains deterministic and is checked for immutability before and after
+every agent run. Full design and threat controls are documented in
+[`AGENTIC_AI_PLAN.md`](AGENTIC_AI_PLAN.md).
+
 ### Machine-learning classifier (optional)
 
-A permission-based RandomForest gives a data-driven malware probability that's folded
-into the hybrid score (plan §7). A **demo model** (trained on synthetic data) ships so
-the ML panel works out of the box — replace it with a real one:
+A permission-based RandomForest can provide a corroborating malware probability. No
+model is trusted or enabled by default; train a demo model only to smoke-test the wiring,
+then replace it with a versioned model trained and evaluated on real data:
 
 ```powershell
 # 1) Smoke-test the pipeline with synthetic data (no download):
@@ -96,12 +152,48 @@ the ML panel works out of the box — replace it with a real one:
     --data path\to\drebin\feature_vectors ^
     --labels path\to\drebin\sha256_family.csv ^
     --out app\ml\model.pkl
+
+# Or train on the official CICMalDroid-2020 CSV.zip using only its static
+# permission columns (the feature type reproduced by live APK analysis):
+.venv\Scripts\python.exe -m app.ml.train `
+    --maldroid-csv ..\test\CSV.zip `
+    --out app\ml\model.pkl
 ```
 
 `train.py` prints precision/recall/F1/ROC-AUC on a held-out split and saves the model +
 fitted permission vocabulary + metrics. The classifier is a silent no-op if no
 `model.pkl` is present. **Caveat:** Drebin is ~2014-era, so treat the ML output as a
 corroborating signal (concept drift), not a sole verdict.
+
+For CICMalDroid training, the saved bundle selects a conservative alert threshold on
+the held-out split (minimum 98% benign specificity). A probability below that threshold
+is reported as `not_flagged`, never as proof that the APK is benign.
+
+The CICMalDroid syscall/Binder CSVs are not fed to this static classifier: those are
+runtime features and would cause train/serve drift. They can support a future dynamic
+model once the sandbox extracts the same counters. CICMalDroid's static CSV does not
+include APK hashes, so its random held-out score is a development baseline rather than
+a campaign-deduplicated or temporal validation result.
+
+### Accuracy and verdict policy
+
+- Exact risky methods are matched with androguard callsites; a string-pool reference is
+  labelled `reference` and down-weighted rather than described as an observed call.
+- Ordinary embedded HTTPS links are reported but do not add risk. URL points require
+  transparent properties such as a literal IP, higher-risk TLD, non-standard port, or a
+  fraud/C2-like path.
+- Isolated weak signals are kept small. Correlation bonuses represent discriminative
+  fraud chains such as SMS access plus an outbound channel, accessibility plus overlay,
+  and package installation plus runtime DEX loading.
+- A heuristic `Critical` score means **Likely Malicious**, not confirmed. Confirmation is
+  reserved for independent multi-engine corroboration.
+
+Run the fast regression suite:
+
+```powershell
+cd backend
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
 
 ## Dynamic analysis (emulator sandbox — Phase 3)
 
@@ -174,4 +266,5 @@ backend/app/
   db.py  report.py     SQLite + PDF
 frontend/              index.html + app.js (served by FastAPI)
 plan.md                full product vision
+AGENTIC_AI_PLAN.md     bounded local-Ollama + optional-Gemini investigation plan
 ```
