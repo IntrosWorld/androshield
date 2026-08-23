@@ -11,8 +11,8 @@ investigation report → PDF export. Built for banking-fraud / SOC first-level t
 ## Dashboard
 
 The analyst console keeps upload, deterministic triage, evidence review, optional AI,
-and emulator-only runtime analysis visibly separated. It uses self-hosted IBM Plex
-type and the official Tabler outline icon family, with no frontend build step.
+and emulator-only runtime analysis visibly separated. It uses self-hosted Google Sans
+Flex and the official Tabler outline icon family, with no frontend build step.
 
 ![APK upload workspace](docs/images/dashboard-desktop.png)
 

@@ -23,6 +23,19 @@ const safeHttpUrl = (value) => {
     return (u.protocol === "https:" || u.protocol === "http:") ? u.href : "#";
   } catch (_) { return "#"; }
 };
+const statusChipTone = (status) => {
+  const value = String(status || "").toLowerCase();
+  if (["completed", "ok", "ready", "grounded"].includes(value)) return "chip-success";
+  if (["running", "pending", "investigating"].includes(value)) return "chip-info";
+  if (["approval_required", "unavailable", "warning"].includes(value)) return "chip-warning";
+  return "chip-danger";
+};
+const severityChipTone = (severity) => ({
+  Low: "chip-success",
+  Medium: "chip-warning",
+  High: "chip-danger",
+  Critical: "chip-danger",
+}[severity] || "");
 
 const THEME_STORAGE_KEY = "apk-analyzer-theme";
 
@@ -76,13 +89,13 @@ function refreshHealth() {
   return fetch(`${API}/api/health`).then(r => r.json()).then(h => {
     healthData = h;
     let badges = h.gemini_configured
-      ? '<span class="chip" style="background:#0e7490;color:#fff">Gemini connected</span>'
-      : '<span class="chip" style="background:#334155;color:#cbd5e1">Template mode (no GEMINI_API_KEY)</span>';
+      ? '<span class="chip chip-success">Gemini connected</span>'
+      : '<span class="chip">Template mode (no GEMINI_API_KEY)</span>';
     if (h.analyzer_ready === false) {
-      badges += ' <span class="chip" style="background:#7f1d1d;color:#fecaca">Engine offline: start from .venv</span>';
+      badges += ' <span class="chip chip-danger">Engine offline: start from .venv</span>';
     }
     if (h.agentic?.enabled) {
-      badges += ` <span class="chip" style="background:#164e63;color:#a5f3fc">Agent: ${esc(h.agentic.provider)} / ${esc(h.agentic.model)}</span>`;
+      badges += ` <span class="chip chip-info">Agent: ${esc(h.agentic.provider)} / ${esc(h.agentic.model)}</span>`;
     }
     $("gemini-badge").innerHTML = badges;
     updateEmuStatus();
@@ -95,10 +108,10 @@ function updateEmuStatus() {
   if (d.available) {
     const dev = d.device || {};
     if (d.sandbox_present) {
-      el.innerHTML = `<span class="chip" style="background:#134e4a;color:#a7f3d0"><i class="ti ti-device-mobile" aria-hidden="true"></i> ${esc(dev.avd_name || d.serial)}${dev.android_version ? ", Android " + esc(dev.android_version) : ""}</span>`
-        + (healthData.frida_available ? ` <span class="chip" style="background:#1e293b;color:#67e8f9">Frida ready</span>` : "");
+      el.innerHTML = `<span class="chip chip-success"><i class="ti ti-device-mobile" aria-hidden="true"></i> ${esc(dev.avd_name || d.serial)}${dev.android_version ? ", Android " + esc(dev.android_version) : ""}</span>`
+        + (healthData.frida_available ? ` <span class="chip chip-info">Frida ready</span>` : "");
     } else {
-      el.innerHTML = `<span class="chip" style="background:#78350f;color:#fed7aa">${esc(d.preferred_avd)} not running: pick a device deliberately</span>`;
+      el.innerHTML = `<span class="chip chip-warning">${esc(d.preferred_avd)} not running: pick a device deliberately</span>`;
     }
     if (sel) {
       const devices = d.devices || [];
@@ -111,7 +124,7 @@ function updateEmuStatus() {
       sel.innerHTML = opts.join("");
     }
   } else {
-    el.innerHTML = `<span class="chip" style="background:#334155;color:#cbd5e1">○ No emulator attached</span>`;
+    el.innerHTML = `<span class="chip">No emulator attached</span>`;
     if (sel) sel.innerHTML = `<option value="">No device available</option>`;
   }
 }
@@ -204,7 +217,7 @@ function render(a, report) {
   $("score-num").textContent = a.risk_score ?? 0;
   const chip = $("severity-chip");
   chip.textContent = sev;
-  chip.style.background = color; chip.style.color = "#0b1020";
+  chip.className = `chip mt-2 ${severityChipTone(sev)}`;
   $("severity-scale").dataset.active = sev.toLowerCase();
 
   // Meta
@@ -234,7 +247,7 @@ function render(a, report) {
   $("exec-summary").textContent = plain(report.executive_summary || "No narrative summary was produced.");
   $("tech-summary").textContent = plain(report.technical_summary || "");
   $("behaviors").innerHTML = (a.detected_behaviors || []).map(
-    b => `<span class="chip" style="background:#1e293b;color:#67e8f9">${esc(b)}</span>`).join("") ||
+    b => `<span class="chip chip-info">${esc(b)}</span>`).join("") ||
     '<span class="text-slate-500 text-sm">No high-risk behaviours flagged.</span>';
   renderAgent(a.agentic);
 
@@ -281,7 +294,7 @@ function render(a, report) {
     $("yara-card").classList.remove("hidden");
     $("yara-body").innerHTML = yara.matches.map(m => `
       <div class="finding-row">
-        <div class="finding-score text-fuchsia-300">+${Number(m.score) || 0}</div>
+        <div class="finding-score text-rose-300">+${Number(m.score) || 0}</div>
         <div><div class="finding-name font-mono">${esc(m.rule)}</div><div class="finding-detail">${esc(m.description)}${m.attack ? `. ATT&CK ${esc(m.attack)}` : ""}</div></div>
       </div>`).join("");
   } else {
@@ -293,7 +306,7 @@ function render(a, report) {
   if (mitre.techniques && mitre.techniques.length) {
     $("mitre-card").classList.remove("hidden");
     $("mitre-body").innerHTML = mitre.techniques.map(t =>
-      `<a href="${t.url}" target="_blank" class="chip" style="background:#1e293b;color:#fcd34d" title="${t.tactic}">${t.id} ${t.name}</a>`
+      `<a href="${t.url}" target="_blank" rel="noopener noreferrer" class="chip chip-info" title="${t.tactic}">${t.id} ${t.name}</a>`
     ).join("");
   } else {
     $("mitre-card").classList.add("hidden");
@@ -312,7 +325,7 @@ function render(a, report) {
       + `<div class="h-px mb-3" style="width:${pct}%;background:${c}"></div>`
       + ((ml.contributing_permissions||[]).length
           ? `<div class="text-xs text-slate-400 mb-1">Top contributing permissions:</div><div class="flex flex-wrap gap-1.5">`
-            + ml.contributing_permissions.map(p => `<span class="chip" style="background:#1e293b;color:#93c5fd">${esc(p.permission)}</span>`).join("") + `</div>`
+            + ml.contributing_permissions.map(p => `<span class="chip chip-info">${esc(p.permission)}</span>`).join("") + `</div>`
           : "")
       + (m.f1_malware != null ? `<div class="text-xs text-slate-500 mt-3">Model: precision ${m.precision_malware?.toFixed(2)}, recall ${m.recall_malware?.toFixed(2)}, F1 ${m.f1_malware?.toFixed(2)}${m.roc_auc!=null?`, AUC ${m.roc_auc.toFixed(2)}`:""} (n=${m.n_samples})</div>` : "");
   } else {
@@ -325,7 +338,7 @@ function render(a, report) {
     $("apkid-card").classList.remove("hidden");
     $("apkid-body").innerHTML =
       (apkid.findings || []).map(f =>
-        `<div><span class="chip" style="background:#7c2d12;color:#fed7aa">${esc(f.category)}</span> <span class="text-slate-200 font-mono text-xs">${esc(f.name)}</span></div>`).join("")
+        `<div><span class="chip chip-warning">${esc(f.category)}</span> <span class="text-slate-200 font-mono text-xs">${esc(f.name)}</span></div>`).join("")
       + ((apkid.compilers || []).length ? `<div class="text-xs text-slate-500 mt-1">Compiler: ${apkid.compilers.map(esc).join(", ")}</div>` : "")
       + (!(apkid.findings||[]).length ? `<div class="text-slate-500 text-xs">No packer/obfuscator/anti-analysis tooling detected.</div>` : "");
   } else {
@@ -347,7 +360,7 @@ function render(a, report) {
         + (fr.threat_label ? `<div class="mb-2">Threat label: <span class="font-mono text-amber-300">${esc(fr.threat_label)}</span></div>` : "")
         + ((fr.engine_hits || []).length
             ? `<div class="text-xs text-slate-400 mb-1">Detections:</div><div class="flex flex-wrap gap-1.5">`
-              + fr.engine_hits.slice(0, 14).map(h => `<span class="chip" style="background:#1e293b;color:#fca5a5" title="${esc(h.engine)}">${esc(h.result)}</span>`).join("") + `</div>`
+              + fr.engine_hits.slice(0, 14).map(h => `<span class="chip chip-danger" title="${esc(h.engine)}">${esc(h.result)}</span>`).join("") + `</div>`
             : "")
         + ((vt.flagged_domains || []).length
             ? `<div class="mt-3 text-xs text-slate-400">Flagged domains: <span class="text-red-300 font-mono">${vt.flagged_domains.map(d => esc(d.domain)).join(", ")}</span></div>` : "")
@@ -370,7 +383,7 @@ function render(a, report) {
       if (cert.sha256) html += `<div><span class="text-slate-400">Cert SHA256:</span> <span class="font-mono text-xs">${short(cert.sha256)}</span></div>`;
     }
     (cert.flags || []).forEach(f =>
-      html += `<div><span class="chip" style="background:#7f1d1d;color:#fecaca">${esc(f.flag)}</span> <span class="text-slate-400 text-xs">${esc(f.detail)}</span></div>`);
+      html += `<div><span class="chip chip-danger">${esc(f.flag)}</span> <span class="text-slate-400 text-xs">${esc(f.detail)}</span></div>`);
     if (comp.count) html += `<div class="mt-1"><span class="text-slate-400">Exported components:</span> ${comp.count} (${comp.unguarded_count || 0} unguarded)</div>`;
     $("cert-body").innerHTML = html;
   } else {
@@ -397,10 +410,9 @@ function renderAgent(agent) {
       : '<p class="text-slate-500">Disabled. Set <code>AGENT_ENABLED=true</code> to enable the bounded investigator.</p>';
     return;
   }
-  const statusColor = agent.status === "completed" ? "#67e8f9" : agent.status === "unavailable" ? "#fbbf24" : "#fca5a5";
   const hypotheses = (agent.hypotheses || []).map(h => `
     <div class="agent-hypothesis">
-      <div class="flex gap-2 items-start"><span class="chip shrink-0" style="background:#164e63;color:#a5f3fc">${esc(h.confidence)}</span><span class="text-slate-200">${esc(h.claim)}</span></div>
+      <div class="flex gap-2 items-start"><span class="chip chip-info shrink-0">${esc(h.confidence)}</span><span class="text-slate-200">${esc(h.claim)}</span></div>
       <div class="mt-2 text-xs text-slate-500">Evidence: ${(h.evidence_ids || []).map(esc).join(", ")}</div>
     </div>`).join("") || '<p class="text-slate-500">No grounded hypothesis was produced.</p>';
   const audit = (agent.audit || []).map(step => `
@@ -411,7 +423,7 @@ function renderAgent(agent) {
   const gaps = (agent.gaps || []).map(g => `<li>${esc(g)}</li>`).join("");
   const review = agent.gemini_review ? `<div class="mt-3 text-xs text-slate-400">Gemini review: <span class="${agent.gemini_review.grounded ? "text-emerald-400" : "text-amber-400"}">${agent.gemini_review.grounded ? "grounded" : "issues found"}</span>${(agent.gemini_review.unsupported_claims || []).length ? `. Unsupported: ${agent.gemini_review.unsupported_claims.map(esc).join("; ")}` : ""}</div>` : "";
   body.innerHTML = `
-    <div class="flex flex-wrap gap-2 mb-3"><span class="chip" style="background:#1e293b;color:${statusColor}">${esc(agent.status)}</span><span class="chip" style="background:#1e293b;color:#cbd5e1">${esc(agent.provider || "Unavailable")} / ${esc(agent.model || "Unavailable")}</span><span class="chip" style="background:#1e293b;color:#cbd5e1">${esc(agent.steps_used || 0)} steps, ${esc(agent.duration_ms || 0)} ms</span></div>
+    <div class="flex flex-wrap gap-2 mb-3"><span class="chip ${statusChipTone(agent.status)}">${esc(agent.status)}</span><span class="chip">${esc(agent.provider || "Unavailable")} / ${esc(agent.model || "Unavailable")}</span><span class="chip">${esc(agent.steps_used || 0)} steps, ${esc(agent.duration_ms || 0)} ms</span></div>
     <div class="space-y-2">${hypotheses}</div>
     ${gaps ? `<div class="mt-3"><div class="text-xs uppercase tracking-wide text-slate-500">Evidence gaps</div><ul class="list-disc pl-5 mt-1 text-slate-400">${gaps}</ul></div>` : ""}
     ${review}
@@ -441,7 +453,7 @@ $("agent-run-btn")?.addEventListener("click", async () => {
 });
 
 // --- Sample history ---
-const SEV_CHIP = (sev) => `<span class="chip" style="background:${SEV_COLORS[sev]||'#64748b'};color:#0b1020">${sev}</span>`;
+const SEV_CHIP = (sev) => `<span class="chip ${severityChipTone(sev)}">${esc(sev)}</span>`;
 async function loadHistory() {
   try {
     const r = await fetch(`${API}/api/samples`);
@@ -550,7 +562,7 @@ function renderDynamic(d) {
   const fr = d.frida || {};
   $("dyn-results").innerHTML =
     `<div class="flex items-center gap-3 mb-3"><span class="text-2xl font-medium font-mono text-amber-400">${d.dynamic_score ?? 0}</span><span class="text-slate-400 text-sm">dynamic behaviour score, ran ${d.duration}s${d.use_frida ? ", Frida" : ""}${d.rooted ? ", root" : ""}${d.has_launcher === false ? ", no launcher icon" : ""}</span></div>`
-    + ((d.activated && d.activated.length) ? `<div class="text-xs text-slate-400 mb-2">Triggered: ${d.activated.map(x=>`<span class="chip" style="background:#1e293b;color:#fcd34d">${esc(x)}</span>`).join(" ")}</div>` : "")
+    + ((d.activated && d.activated.length) ? `<div class="text-xs text-slate-400 mb-2">Triggered: ${d.activated.map(x=>`<span class="chip chip-warning">${esc(x)}</span>`).join(" ")}</div>` : "")
     + `<div class="grid md:grid-cols-2 gap-x-6 gap-y-1 text-sm">`
     + list("Granted permissions", d.granted_permissions)
     + list("Services", (d.services||[]).map(s=>s.split("/").pop()))
@@ -559,7 +571,7 @@ function renderDynamic(d) {
     + (d.crashes && d.crashes.length ? `<div><span class="text-slate-400">Crashes:</span> <span class="text-red-300 text-xs">${d.crashes.length}</span></div>` : "")
     + `</div>`
     + (fr.ran ? `<div class="mt-3"><div class="text-xs text-slate-400 mb-1">Frida-hooked events (${fr.event_count}):</div><div class="flex flex-wrap gap-1.5">`
-        + (fr.findings||[]).map(f=>`<span class="chip" style="background:#1e293b;color:#67e8f9">${esc(f.label)} ×${Number(f.count)||0}</span>`).join("") + `</div></div>`
+        + (fr.findings||[]).map(f=>`<span class="chip chip-info">${esc(f.label)} ×${Number(f.count)||0}</span>`).join("") + `</div></div>`
       : (d.use_frida && fr.reason ? `<div class="mt-3 text-xs text-slate-500">Frida: ${esc(fr.reason.split("\n")[0])}</div>` : ""))
     + (d.score_breakdown && d.score_breakdown.length
         ? `<div class="mt-3 space-y-1">` + d.score_breakdown.map(b=>`<div class="text-xs flex justify-between"><span class="text-slate-400">${esc(b.category)}</span><span class="text-amber-400">+${Number(b.points)||0}</span></div>`).join("") + `</div>` : "")

@@ -35,15 +35,19 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_dashboard_self_hosts_its_interface_fonts(self):
         for filename in (
-            "ibm-plex-sans-400.woff2",
-            "ibm-plex-sans-500.woff2",
-            "ibm-plex-sans-600.woff2",
-            "ibm-plex-mono-400.woff2",
-            "ibm-plex-mono-500.woff2",
+            "google-sans-flex-latin.woff2",
+            "LICENSE-GOOGLE-SANS-FLEX.txt",
         ):
             self.assertTrue((ROOT / "frontend" / "vendor" / "fonts" / filename).exists())
-        self.assertIn('font-family: "IBM Plex Sans"', HTML)
-        self.assertIn('font-family: "IBM Plex Mono"', HTML)
+        self.assertIn('font-family: "Google Sans Flex"', HTML)
+        self.assertIn('font-family: var(--font-ui) !important', HTML)
+        self.assertNotIn("IBM Plex", HTML)
+
+    def test_evidence_chips_use_theme_aware_semantic_colors(self):
+        for tone in ("chip-info", "chip-warning", "chip-danger", "chip-success"):
+            self.assertIn(f".{tone}", HTML)
+            self.assertIn(tone, JS)
+        self.assertNotRegex(JS, r'class="chip[^\"]*" style="background')
 
     def test_dropzone_is_keyboard_accessible(self):
         tag = tag_with_id(HTML, "dropzone")
