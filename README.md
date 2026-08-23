@@ -18,12 +18,9 @@ investigator, and deliberately opt into emulator analysis when runtime evidence 
 needed. The interface uses the IBM Carbon icon system and remains usable on compact
 screens without a separate frontend build step.
 
-<details>
-<summary>Compact responsive layout</summary>
+### Compact responsive layout
 
 ![APK Fraud Analyzer compact dashboard](docs/images/dashboard-compact.png)
-
-</details>
 
 Key UI capabilities:
 
