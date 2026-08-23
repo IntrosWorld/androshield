@@ -16,6 +16,15 @@ Flex and the official Tabler outline icon family, with no frontend build step.
 
 ![APK upload workspace](docs/images/dashboard-desktop.png)
 
+### Light mode analysis workspace
+
+The light theme keeps the same dense analyst layout while adapting evidence labels,
+severity colors, panel surfaces, and typography for a bright workspace.
+
+![Light mode analysis summary and static evidence](docs/images/light-mode-analysis-summary.png)
+
+![Light mode YARA, MITRE, certificate, and APKiD evidence panels](docs/images/light-mode-evidence-panels.png)
+
 ### Real CIC MalDroid banking analysis
 
 The populated views below come from a real 468,037-byte Banking-family APK extracted
