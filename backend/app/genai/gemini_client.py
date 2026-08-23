@@ -208,7 +208,8 @@ def _normalise_report(candidate, analysis: dict) -> dict:
 
 
 def generate_report(analysis: dict) -> dict:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    external_enabled = os.getenv("EXTERNAL_API_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    api_key = os.getenv("GEMINI_API_KEY", "").strip() if external_enabled else ""
     if not api_key:
         log.info("No GEMINI_API_KEY set — using template fallback report.")
         return _template_report(analysis)
@@ -249,7 +250,8 @@ def review_investigation(analysis: dict, investigation: dict) -> dict:
     """
     if os.getenv("AGENT_GEMINI_REVIEW", "false").strip().lower() not in {"1", "true", "yes", "on"}:
         return investigation
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    external_enabled = os.getenv("EXTERNAL_API_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    api_key = os.getenv("GEMINI_API_KEY", "").strip() if external_enabled else ""
     if not api_key or investigation.get("status") != "completed":
         return investigation
     reviewed = dict(investigation)

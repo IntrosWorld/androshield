@@ -20,7 +20,8 @@ MAX_DOMAIN_LOOKUPS = 3   # keep total requests within the 4/min free tier
 
 
 def is_configured() -> bool:
-    return bool(os.getenv("VT_API_KEY", "").strip())
+    enabled = os.getenv("EXTERNAL_API_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    return enabled and bool(os.getenv("VT_API_KEY", "").strip())
 
 
 def _headers():

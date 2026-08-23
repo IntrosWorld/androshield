@@ -163,6 +163,12 @@ AGENT_MAX_STEPS=8
 AGENT_MAX_TOOL_CALLS=4
 ```
 
+The dashboard settings button in the top-right can change these values without
+editing `.env`. It also controls the external-service gate, Gemini and VirusTotal
+credentials, runtime budgets, the Ollama endpoint and model, and local GGUF import.
+Settings are persisted in the local SQLite database and the settings API is restricted
+to loopback clients. Secret values are never returned to the browser after saving.
+
 With automatic mode off, analyze and save an APK first, then use the dashboard's
 **Run AI Investigation** button or `POST /api/agent/investigate/{sample_id}`. Provider
 status is available from `GET /api/agent/health`. CPU-only inference may take several

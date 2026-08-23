@@ -119,13 +119,19 @@ class GeminiProvider(AgentProvider):
         self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
     def health(self) -> dict:
-        configured = bool(os.getenv("GEMINI_API_KEY", "").strip())
+        external_enabled = os.getenv("EXTERNAL_API_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+        configured = external_enabled and bool(os.getenv("GEMINI_API_KEY", "").strip())
         return {
             "available": configured, "provider": self.name, "model": self.model,
-            "reason": None if configured else "GEMINI_API_KEY is not configured",
+            "reason": None if configured else (
+                "external API access is disabled in application settings"
+                if not external_enabled else "GEMINI_API_KEY is not configured"
+            ),
         }
 
     def next_step(self, messages: list[dict], tools: list[dict]) -> dict:
+        if os.getenv("EXTERNAL_API_ENABLED", "true").strip().lower() not in {"1", "true", "yes", "on"}:
+            raise ProviderError("external API access is disabled in application settings")
         key = os.getenv("GEMINI_API_KEY", "").strip()
         if not key:
             raise ProviderError("GEMINI_API_KEY is not configured")

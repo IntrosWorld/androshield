@@ -6,9 +6,10 @@ runs from one `uvicorn app.main:app` process.
 import logging
 import os
 import tempfile
+from ipaddress import ip_address
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,7 +27,7 @@ from .intel import virustotal, apkid_scan
 from .ml import classifier as ml_classifier
 from .dynamic import sandbox as dyn_sandbox, frida_runner
 from .agent import orchestrator as agent_orchestrator
-from . import db, report as report_pdf
+from . import db, report as report_pdf, runtime_settings
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
 UPLOAD_CHUNK_BYTES = 1024 * 1024
@@ -38,8 +39,19 @@ cors_origins = [o.strip() for o in os.getenv(
 ).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware, allow_origins=cors_origins,
-    allow_methods=["GET", "POST"], allow_headers=["Content-Type"],
+    allow_methods=["GET", "POST", "PUT"], allow_headers=["Content-Type"],
 )
+
+
+def _require_loopback(request: Request) -> None:
+    """Keep machine-level settings inaccessible to LAN clients."""
+    host = request.client.host if request.client else ""
+    try:
+        local = ip_address(host).is_loopback
+    except ValueError:
+        local = host in {"localhost", "testclient"}
+    if not local:
+        raise HTTPException(403, "Application settings are available only on this computer")
 
 
 async def _spool_upload(file: UploadFile) -> tuple[str, int]:
@@ -78,9 +90,10 @@ async def _spool_upload(file: UploadFile) -> tuple[str, int]:
 @app.on_event("startup")
 def _startup():
     db.init_db()
+    runtime_settings.load_persisted()
     ready = static_analyzer.engine_available()
     log.info("DB initialised. Gemini key present: %s | analyzer engine ready: %s",
-             bool(os.getenv("GEMINI_API_KEY")), ready)
+             runtime_settings.external_services_enabled() and bool(os.getenv("GEMINI_API_KEY")), ready)
     if not ready:
         log.error("androguard is NOT importable in this interpreter — analysis will fail. "
                   "Start the server from backend/.venv (run: .\\.venv\\Scripts\\Activate.ps1).")
@@ -90,7 +103,8 @@ def _startup():
 def health():
     return {
         "status": "ok",
-        "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+        "external_api_enabled": runtime_settings.external_services_enabled(),
+        "gemini_configured": runtime_settings.external_services_enabled() and bool(os.getenv("GEMINI_API_KEY", "").strip()),
         "virustotal_configured": virustotal.is_configured(),
         "apkid_available": apkid_scan.available(),
         "ml_model_loaded": ml_classifier.available(),
@@ -99,6 +113,38 @@ def health():
         "frida_available": frida_runner.available(),
         "agentic": agent_orchestrator.agent_health(check_provider=False),
     }
+
+
+@app.get("/api/settings")
+def get_settings(request: Request):
+    _require_loopback(request)
+    return runtime_settings.public_settings()
+
+
+@app.put("/api/settings")
+def put_settings(request: Request, payload: dict = Body(...)):
+    _require_loopback(request)
+    try:
+        return runtime_settings.update_settings(payload)
+    except runtime_settings.SettingsError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/settings/test-provider")
+def test_settings_provider(request: Request):
+    _require_loopback(request)
+    return agent_orchestrator.agent_health(check_provider=True)
+
+
+@app.post("/api/settings/import-model")
+def import_settings_model(request: Request, payload: dict = Body(...)):
+    _require_loopback(request)
+    try:
+        return runtime_settings.import_gguf(
+            payload.get("model_path", ""), payload.get("model_name", ""),
+        )
+    except runtime_settings.SettingsError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.get("/api/agent/health")

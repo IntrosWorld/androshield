@@ -70,6 +70,160 @@ $("theme-toggle")?.addEventListener("click", () => {
   applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
 });
 
+// --- Application settings ---
+let settingsData = null;
+const settingValue = (id) => $(id)?.value?.trim() || "";
+const settingNumber = (id) => Number.parseInt($(id)?.value, 10);
+
+function setSettingsStatus(message, tone = "") {
+  const status = $("settings-status");
+  if (!status) return;
+  status.textContent = plain(message);
+  status.dataset.tone = tone;
+}
+
+function renderSettings(data) {
+  settingsData = data;
+  $("setting-external-enabled").checked = Boolean(data.external_api_enabled);
+  $("setting-agent-enabled").checked = Boolean(data.agent_enabled);
+  $("setting-agent-auto-run").checked = Boolean(data.agent_auto_run);
+  $("setting-gemini-review").checked = Boolean(data.agent_gemini_review);
+  $("setting-provider").value = data.agent_provider || "ollama";
+  $("setting-ollama-url").value = data.ollama_base_url || "";
+  $("setting-ollama-model").value = data.ollama_model || "";
+  $("setting-models-dir").value = data.ollama_models_dir || "";
+  $("setting-gemini-model").value = data.gemini_model || "";
+  $("setting-context-tokens").value = data.agent_context_tokens ?? 4096;
+  $("setting-max-steps").value = data.agent_max_steps ?? 8;
+  $("setting-max-tools").value = data.agent_max_tool_calls ?? 4;
+  $("setting-time-budget").value = data.agent_time_budget_seconds ?? 420;
+  $("setting-provider-timeout").value = data.agent_provider_timeout_seconds ?? 240;
+  $("gemini-key-state").textContent = data.gemini_key_configured ? "(saved)" : "";
+  $("vt-key-state").textContent = data.virustotal_key_configured ? "(saved)" : "";
+  $("setting-gemini-key").value = "";
+  $("setting-vt-key").value = "";
+  $("clear-gemini-key").checked = false;
+  $("clear-vt-key").checked = false;
+}
+
+async function loadSettings() {
+  const response = await fetch(`${API}/api/settings`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || "Could not load settings");
+  renderSettings(data);
+  return data;
+}
+
+function collectSettings() {
+  const data = {
+    external_api_enabled: $("setting-external-enabled").checked,
+    agent_enabled: $("setting-agent-enabled").checked,
+    agent_auto_run: $("setting-agent-auto-run").checked,
+    agent_gemini_review: $("setting-gemini-review").checked,
+    agent_provider: settingValue("setting-provider"),
+    ollama_base_url: settingValue("setting-ollama-url"),
+    ollama_model: settingValue("setting-ollama-model"),
+    ollama_models_dir: settingValue("setting-models-dir"),
+    gemini_model: settingValue("setting-gemini-model"),
+    agent_context_tokens: settingNumber("setting-context-tokens"),
+    agent_max_steps: settingNumber("setting-max-steps"),
+    agent_max_tool_calls: settingNumber("setting-max-tools"),
+    agent_time_budget_seconds: settingNumber("setting-time-budget"),
+    agent_provider_timeout_seconds: settingNumber("setting-provider-timeout"),
+    clear_gemini_api_key: $("clear-gemini-key").checked,
+    clear_virustotal_api_key: $("clear-vt-key").checked,
+  };
+  const geminiKey = settingValue("setting-gemini-key");
+  const vtKey = settingValue("setting-vt-key");
+  if (geminiKey) data.gemini_api_key = geminiKey;
+  if (vtKey) data.virustotal_api_key = vtKey;
+  return data;
+}
+
+async function saveSettings() {
+  const response = await fetch(`${API}/api/settings`, {
+    method: "PUT",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(collectSettings()),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || "Could not save settings");
+  renderSettings(data);
+  await refreshHealth();
+  return data;
+}
+
+$("settings-open")?.addEventListener("click", async () => {
+  const dialog = $("settings-dialog");
+  dialog.showModal();
+  setSettingsStatus("Loading settings...");
+  try {
+    await loadSettings();
+    setSettingsStatus("Settings are stored locally on this computer.");
+  } catch (error) {
+    setSettingsStatus(error.message, "danger");
+  }
+});
+$("settings-close")?.addEventListener("click", () => $("settings-dialog")?.close());
+$("settings-dialog")?.addEventListener("click", event => {
+  if (event.target === $("settings-dialog")) $("settings-dialog").close();
+});
+$("settings-form")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = $("settings-save");
+  setButtonBusy(button, true, "Saving...");
+  setSettingsStatus("Validating settings...");
+  try {
+    await saveSettings();
+    setSettingsStatus("Settings saved and applied.", "success");
+  } catch (error) {
+    setSettingsStatus(error.message, "danger");
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+$("settings-test")?.addEventListener("click", async () => {
+  const button = $("settings-test");
+  setButtonBusy(button, true, "Testing...");
+  setSettingsStatus("Saving settings and checking the selected provider...");
+  try {
+    await saveSettings();
+    const response = await fetch(`${API}/api/settings/test-provider`, {method: "POST"});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || "Provider check failed");
+    const provider = data.provider_health || {};
+    if (!provider.available) throw new Error(provider.reason || "Provider is unavailable");
+    const installed = provider.installed_models?.length ? ` ${provider.installed_models.length} local model(s) found.` : "";
+    setSettingsStatus(`${provider.provider} / ${provider.model} is ready.${installed}`, "success");
+  } catch (error) {
+    setSettingsStatus(error.message, "danger");
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+$("settings-import-model")?.addEventListener("click", async () => {
+  const button = $("settings-import-model");
+  const modelPath = settingValue("setting-gguf-path");
+  const modelName = settingValue("setting-import-name");
+  setButtonBusy(button, true, "Importing...");
+  setSettingsStatus("Ollama is importing the GGUF. Large models can take several minutes.");
+  try {
+    const response = await fetch(`${API}/api/settings/import-model`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({model_path: modelPath, model_name: modelName}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || "Model import failed");
+    $("setting-ollama-model").value = data.model;
+    await loadSettings();
+    setSettingsStatus(`${data.model} was imported and selected.`, "success");
+  } catch (error) {
+    setSettingsStatus(error.message, "danger");
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
 function setButtonBusy(button, busy, busyLabel) {
   if (!button) return;
   if (busy && !button.dataset.idleHtml) button.dataset.idleHtml = button.innerHTML;

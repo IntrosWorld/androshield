@@ -252,6 +252,44 @@
     .recommendation-item::before { content: attr(data-index); position: absolute; left: .9rem; top: .92rem; color: var(--accent); font: 500 10px/1 var(--font-ui); }
     .sandbox-panel { border-color: var(--sandbox-line); background: var(--sandbox-bg); }
     .theme-toggle { min-height: 32px; padding: .42rem .7rem; font-size: .75rem; }
+    .icon-button { width: 34px; min-height: 32px; padding: .4rem; }
+    .settings-dialog {
+      width: min(760px, calc(100vw - 2rem));
+      max-height: min(840px, calc(100dvh - 2rem));
+      margin: auto;
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      color: var(--ink);
+      background: var(--panel);
+      box-shadow: 0 24px 80px rgba(0,0,0,.45);
+    }
+    .settings-dialog::backdrop { background: rgba(2,6,12,.68); backdrop-filter: blur(3px); }
+    .settings-shell { display: flex; max-height: min(840px, calc(100dvh - 2rem)); flex-direction: column; }
+    .settings-head, .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem; background: var(--panel-strong); }
+    .settings-head { border-bottom: 1px solid var(--line); }
+    .settings-actions { border-top: 1px solid var(--line); }
+    .settings-scroll { overflow-y: auto; padding: 0 1.2rem 1.2rem; }
+    .settings-section { padding: 1.2rem 0; border-bottom: 1px solid var(--line); }
+    .settings-section:last-child { border-bottom: 0; }
+    .settings-section h3 { color: var(--title); font-size: .85rem; font-weight: 650; }
+    .settings-section > p { margin-top: .22rem; color: var(--subtle); font-size: .72rem; line-height: 1.45; }
+    .settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .9rem 1rem; margin-top: 1rem; }
+    .field { min-width: 0; }
+    .field-wide { grid-column: 1 / -1; }
+    .field label { display: block; margin-bottom: .32rem; color: var(--muted); font-size: .7rem; font-weight: 600; }
+    .field .control { width: 100%; font-size: .78rem; }
+    .field-help { margin-top: .3rem; color: var(--subtle); font-size: .66rem; line-height: 1.4; }
+    .toggle-row { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: 1rem; padding: .58rem .68rem; border: 1px solid var(--line); background: var(--surface-muted); }
+    .toggle-copy { min-width: 0; }
+    .toggle-copy strong { display: block; color: var(--title); font-size: .75rem; font-weight: 600; }
+    .toggle-copy span { display: block; margin-top: .12rem; color: var(--subtle); font-size: .66rem; }
+    .toggle-row input { width: 17px; height: 17px; flex: none; accent-color: var(--accent); }
+    .settings-status { min-height: 1.15rem; color: var(--subtle); font-size: .7rem; }
+    .settings-status[data-tone="success"] { color: var(--chip-success-fg); }
+    .settings-status[data-tone="danger"] { color: var(--danger); }
+    .secret-state { color: var(--chip-success-fg); }
     html[data-theme="light"] .text-white,
     html[data-theme="light"] .text-slate-200 { color: #253241 !important; }
     html[data-theme="light"] .text-slate-300 { color: #3e4b5b !important; }
@@ -292,6 +330,11 @@
       .section-intro p { margin-top: .2rem; }
       .ioc-group { grid-template-columns: 1fr; gap: .25rem; }
       .recommendation-grid { grid-template-columns: 1fr; }
+      .settings-grid { grid-template-columns: 1fr; }
+      .field-wide { grid-column: auto; }
+      .settings-actions { align-items: stretch; flex-direction: column; }
+      .settings-actions > div { width: 100%; }
+      .settings-actions button { flex: 1; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
@@ -317,6 +360,9 @@
         <button id="theme-toggle" class="btn-secondary theme-toggle" type="button" aria-pressed="false" aria-label="Switch to light mode">
           <i id="theme-icon" class="ti ti-sun" aria-hidden="true"></i>
           <span id="theme-label">Light mode</span>
+        </button>
+        <button id="settings-open" class="btn-secondary icon-button" type="button" aria-label="Open application settings" title="Application settings">
+          <i class="ti ti-settings" aria-hidden="true"></i>
         </button>
       </div>
     </header>
@@ -507,6 +553,89 @@
     </section>
   </main>
 
-  <script src="app.js?v=analyst-workspace-7"></script>
+  <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+    <form id="settings-form" class="settings-shell">
+      <div class="settings-head">
+        <div>
+          <h2 id="settings-title" class="text-base font-semibold">Application settings</h2>
+          <p class="mt-1 text-xs text-slate-500">Configure local inference and optional external services.</p>
+        </div>
+        <button id="settings-close" class="btn-secondary icon-button" type="button" aria-label="Close settings" title="Close settings">
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="settings-scroll">
+        <section class="settings-section" aria-labelledby="settings-runtime-title">
+          <h3 id="settings-runtime-title">Runtime controls</h3>
+          <p>Agent actions remain bounded to extracted evidence and cannot execute an APK.</p>
+          <div class="settings-grid">
+            <label class="toggle-row field-wide" for="setting-agent-enabled">
+              <span class="toggle-copy"><strong>Agentic evidence investigation</strong><span>Allow the selected model to choose read-only evidence tools.</span></span>
+              <input id="setting-agent-enabled" name="agent_enabled" type="checkbox" />
+            </label>
+            <label class="toggle-row" for="setting-agent-auto-run">
+              <span class="toggle-copy"><strong>Run after static analysis</strong><span>Start investigation automatically for valid APKs.</span></span>
+              <input id="setting-agent-auto-run" name="agent_auto_run" type="checkbox" />
+            </label>
+            <label class="toggle-row" for="setting-gemini-review">
+              <span class="toggle-copy"><strong>Gemini grounding review</strong><span>Review local-agent claims when external access is enabled.</span></span>
+              <input id="setting-gemini-review" name="agent_gemini_review" type="checkbox" />
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section" aria-labelledby="settings-provider-title">
+          <h3 id="settings-provider-title">Investigation model</h3>
+          <p>Select the planner and tune its bounded runtime limits.</p>
+          <div class="settings-grid">
+            <div class="field"><label for="setting-provider">Provider</label><select id="setting-provider" class="control"><option value="ollama">Ollama, local</option><option value="gemini">Gemini API</option></select></div>
+            <div class="field"><label for="setting-ollama-model">Ollama model</label><input id="setting-ollama-model" class="control" type="text" autocomplete="off" placeholder="qwen3:1.7b" /></div>
+            <div class="field field-wide"><label for="setting-ollama-url">Ollama server URL</label><input id="setting-ollama-url" class="control" type="url" autocomplete="off" placeholder="http://127.0.0.1:11434" /><p class="field-help">Use a trusted HTTP or HTTPS endpoint. Credentials in the URL are rejected.</p></div>
+            <div class="field"><label for="setting-gemini-model">Gemini model</label><input id="setting-gemini-model" class="control" type="text" autocomplete="off" placeholder="gemini-2.0-flash" /></div>
+            <div class="field"><label for="setting-context-tokens">Context tokens</label><input id="setting-context-tokens" class="control" type="number" min="2048" max="32768" step="1" /></div>
+            <div class="field"><label for="setting-max-steps">Maximum agent steps</label><input id="setting-max-steps" class="control" type="number" min="1" max="20" step="1" /></div>
+            <div class="field"><label for="setting-max-tools">Maximum tool calls</label><input id="setting-max-tools" class="control" type="number" min="1" max="19" step="1" /></div>
+            <div class="field"><label for="setting-time-budget">Time budget, seconds</label><input id="setting-time-budget" class="control" type="number" min="10" max="3600" step="1" /></div>
+            <div class="field"><label for="setting-provider-timeout">Provider timeout, seconds</label><input id="setting-provider-timeout" class="control" type="number" min="5" max="900" step="1" /></div>
+          </div>
+        </section>
+
+        <section class="settings-section" aria-labelledby="settings-api-title">
+          <h3 id="settings-api-title">External services</h3>
+          <p>Only extracted findings are sent to Gemini. Raw APK content never leaves the static pipeline.</p>
+          <div class="settings-grid">
+            <label class="toggle-row field-wide" for="setting-external-enabled">
+              <span class="toggle-copy"><strong>Enable external API calls</strong><span>Master control for Gemini reporting, Gemini planning, and VirusTotal lookups.</span></span>
+              <input id="setting-external-enabled" name="external_api_enabled" type="checkbox" />
+            </label>
+            <div class="field"><label for="setting-gemini-key">Gemini API key <span id="gemini-key-state" class="secret-state"></span></label><input id="setting-gemini-key" class="control" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved key" /><p class="field-help"><label><input id="clear-gemini-key" type="checkbox" /> Clear saved key</label></p></div>
+            <div class="field"><label for="setting-vt-key">VirusTotal API key <span id="vt-key-state" class="secret-state"></span></label><input id="setting-vt-key" class="control" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved key" /><p class="field-help"><label><input id="clear-vt-key" type="checkbox" /> Clear saved key</label></p></div>
+          </div>
+        </section>
+
+        <section class="settings-section" aria-labelledby="settings-model-title">
+          <h3 id="settings-model-title">Local model files</h3>
+          <p>Import an existing GGUF into Ollama. This reads the selected file but does not upload it.</p>
+          <div class="settings-grid">
+            <div class="field field-wide"><label for="setting-models-dir">Ollama model storage folder</label><input id="setting-models-dir" class="control" type="text" autocomplete="off" placeholder="F:\\ollama-models" /><p class="field-help">Storage changes apply after Ollama is restarted with this environment setting.</p></div>
+            <div class="field field-wide"><label for="setting-gguf-path">GGUF file location</label><input id="setting-gguf-path" class="control" type="text" autocomplete="off" placeholder="F:\\models\\android-security.gguf" /></div>
+            <div class="field"><label for="setting-import-name">Imported model name</label><input id="setting-import-name" class="control" type="text" autocomplete="off" placeholder="android-security-local" /></div>
+            <div class="field flex items-end"><button id="settings-import-model" class="btn-secondary w-full" type="button"><i class="ti ti-database-import" aria-hidden="true"></i>Import GGUF</button></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="settings-actions">
+        <p id="settings-status" class="settings-status" role="status" aria-live="polite"></p>
+        <div class="flex gap-2 justify-end">
+          <button id="settings-test" class="btn-secondary" type="button"><i class="ti ti-plug-connected" aria-hidden="true"></i>Test provider</button>
+          <button id="settings-save" class="btn-primary" type="submit"><i class="ti ti-device-floppy" aria-hidden="true"></i>Save settings</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js?v=analyst-workspace-8"></script>
 </body>
 </html>

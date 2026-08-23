@@ -46,6 +46,53 @@ def init_db():
             )
             """
         )
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_settings (
+                key        TEXT PRIMARY KEY,
+                value      TEXT NOT NULL,
+                is_secret  INTEGER NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL
+            )
+            """
+        )
+
+
+def get_runtime_settings(include_secrets: bool = True) -> dict:
+    """Return locally persisted runtime settings.
+
+    Callers serving HTTP responses must leave ``include_secrets`` false. The default
+    is intended for the startup loader, which applies values directly to the process.
+    """
+    with _conn() as con:
+        if include_secrets:
+            rows = con.execute("SELECT key, value FROM runtime_settings").fetchall()
+        else:
+            rows = con.execute(
+                "SELECT key, value FROM runtime_settings WHERE is_secret = 0"
+            ).fetchall()
+    return {row["key"]: row["value"] for row in rows}
+
+
+def save_runtime_settings(values: dict[str, tuple[str, bool]]) -> None:
+    now = time.time()
+    with _conn() as con:
+        con.executemany(
+            """INSERT INTO runtime_settings (key, value, is_secret, updated_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET
+                   value = excluded.value,
+                   is_secret = excluded.is_secret,
+                   updated_at = excluded.updated_at""",
+            [(key, value, int(secret), now) for key, (value, secret) in values.items()],
+        )
+
+
+def delete_runtime_settings(keys: list[str]) -> None:
+    if not keys:
+        return
+    with _conn() as con:
+        con.executemany("DELETE FROM runtime_settings WHERE key = ?", [(key,) for key in keys])
 
 
 def save_sample(analysis: dict, report: dict) -> str:

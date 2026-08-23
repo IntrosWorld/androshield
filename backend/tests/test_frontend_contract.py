@@ -88,6 +88,24 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('$("theme-toggle")?.addEventListener("click"', JS)
         self.assertIn('--gauge-track', HTML + JS)
 
+    def test_application_settings_are_accessible_and_secret_safe(self):
+        opener = tag_with_id(HTML, "settings-open")
+        dialog = tag_with_id(HTML, "settings-dialog")
+        self.assertIn('ti ti-settings', HTML)
+        self.assertRegex(opener, r'aria-label=["\']Open application settings["\']')
+        self.assertRegex(dialog, r'aria-labelledby=["\']settings-title["\']')
+        self.assertIn('role="status"', tag_with_id(HTML, "settings-status"))
+        for element_id in (
+            "setting-external-enabled", "setting-agent-enabled", "setting-provider",
+            "setting-ollama-url", "setting-ollama-model", "setting-gemini-key",
+            "setting-vt-key", "setting-gguf-path", "settings-import-model",
+        ):
+            tag_with_id(HTML, element_id)
+        self.assertIn('fetch(`${API}/api/settings`', JS)
+        self.assertIn('method: "PUT"', JS)
+        self.assertIn('type="password"', HTML)
+        self.assertIn('if (geminiKey) data.gemini_api_key = geminiKey', JS)
+
     def test_busy_helper_preserves_labels_and_exposes_state(self):
         self.assertIn("function setButtonBusy(", JS)
         self.assertIn('button.setAttribute("aria-busy", String(busy))', JS)
