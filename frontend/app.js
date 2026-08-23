@@ -1,4 +1,4 @@
-// APK Fraud Analyzer — dashboard logic
+// APK Fraud Analyzer dashboard logic
 const API = ""; // same origin
 
 const SEV_COLORS = {
@@ -13,7 +13,8 @@ let currentAnalysis = null;
 let currentReport = null;
 
 const $ = (id) => document.getElementById(id);
-const esc = (value) => String(value ?? "").replace(/[&<>"']/g, ch => ({
+const plain = (value) => String(value ?? "").replace(/[\u2014\u2013]/g, "-");
+const esc = (value) => plain(value).replace(/[&<>"']/g, ch => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 }[ch]));
 const safeHttpUrl = (value) => {
@@ -45,7 +46,7 @@ function refreshHealth() {
       ? '<span class="chip" style="background:#0e7490;color:#fff">Gemini connected</span>'
       : '<span class="chip" style="background:#334155;color:#cbd5e1">Template mode (no GEMINI_API_KEY)</span>';
     if (h.analyzer_ready === false) {
-      badges += ' <span class="chip" style="background:#7f1d1d;color:#fecaca">Engine offline — start from .venv</span>';
+      badges += ' <span class="chip" style="background:#7f1d1d;color:#fecaca">Engine offline: start from .venv</span>';
     }
     if (h.agentic?.enabled) {
       badges += ` <span class="chip" style="background:#164e63;color:#a5f3fc">Agent: ${esc(h.agentic.provider)} / ${esc(h.agentic.model)}</span>`;
@@ -64,7 +65,7 @@ function updateEmuStatus() {
       el.innerHTML = `<span class="chip" style="background:#065f46;color:#a7f3d0">● ${esc(dev.avd_name || d.serial)}${dev.android_version ? " · Android " + esc(dev.android_version) : ""}</span>`
         + (healthData.frida_available ? ` <span class="chip" style="background:#1e293b;color:#67e8f9">Frida ready</span>` : "");
     } else {
-      el.innerHTML = `<span class="chip" style="background:#78350f;color:#fed7aa">${esc(d.preferred_avd)} not running — pick a device deliberately</span>`;
+      el.innerHTML = `<span class="chip" style="background:#78350f;color:#fed7aa">${esc(d.preferred_avd)} not running: pick a device deliberately</span>`;
     }
     if (sel) {
       const devices = d.devices || [];
@@ -73,12 +74,12 @@ function updateEmuStatus() {
         const isSandbox = name === d.preferred_avd;
         return `<option value="${esc(x.serial)}" ${x.serial === d.serial ? "selected" : ""}>${isSandbox ? "[Sandbox] " : ""}${esc(name)} (${esc(x.serial)})</option>`;
       });
-      if (!d.sandbox_present) opts.unshift(`<option value="" selected disabled>— choose a device —</option>`);
+      if (!d.sandbox_present) opts.unshift(`<option value="" selected disabled>Select a device</option>`);
       sel.innerHTML = opts.join("");
     }
   } else {
     el.innerHTML = `<span class="chip" style="background:#334155;color:#cbd5e1">○ No emulator attached</span>`;
-    if (sel) sel.innerHTML = `<option value="">— none —</option>`;
+    if (sel) sel.innerHTML = `<option value="">No device available</option>`;
   }
 }
 refreshHealth();
@@ -110,7 +111,7 @@ function setFile(f) {
     return;
   }
   selectedFile = f;
-  $("file-name").textContent = `Selected: ${f.name} · ${(f.size / 1048576).toFixed(2)} MB`;
+  $("file-name").textContent = `Selected: ${plain(f.name)} · ${(f.size / 1048576).toFixed(2)} MB`;
   $("analyze-btn").disabled = false;
   dropzone.classList.add("has-file");
   hideError();
@@ -150,7 +151,7 @@ function render(a, report) {
   currentReport = report;
   // A failed/incomplete parse must NOT look like a clean "Low" app.
   if (a.valid_apk === false || a.risk_score == null || a.severity === "Unknown") {
-    showError("Analysis could not complete — the file may not be a valid/parseable APK. "
+    showError("Analysis could not complete. The file may not be a valid or parseable APK. "
       + ((a.errors && a.errors.length) ? a.errors.join("; ") : "No findings were extracted."));
     $("results").classList.add("hidden");
     return;
@@ -171,70 +172,74 @@ function render(a, report) {
   const chip = $("severity-chip");
   chip.textContent = sev;
   chip.style.background = color; chip.style.color = "#0b1020";
+  $("severity-scale").dataset.active = sev.toLowerCase();
 
   // Meta
   const m = a.manifest || {}, f = a.file || {};
+  $("case-title").textContent = plain(f.filename || "Analyzed APK");
+  $("case-package").textContent = plain(m.package_name || "Package unavailable");
   $("meta").innerHTML = [
-    ["File", f.filename], ["Package", m.package_name || "—"],
-    ["Version", m.version_name || "—"], ["Size", `${((f.file_size||0)/1048576).toFixed(2)} MB`],
+    ["Version", m.version_name || "Not reported"], ["Size", `${((f.file_size||0)/1048576).toFixed(2)} MB`],
     ["SHA256", short(f.sha256)], ["MD5", short(f.md5)],
-    ["Min SDK", m.min_sdk || "—"], ["Target SDK", m.target_sdk || "—"],
+    ["Min SDK", m.min_sdk || "Not reported"], ["Target SDK", m.target_sdk || "Not reported"],
     ["Analysis", a.analysis_quality === "partial" ? "Partial" : "Full"],
-  ].map(([k, v]) => `<div><span class="text-slate-500">${k}</span><br><span class="text-slate-200 break-all">${esc(v||"—")}</span></div>`).join("");
+  ].map(([k, v]) => `<div><span class="text-[10px] uppercase tracking-wide text-slate-600">${k}</span><br><span class="text-slate-200 break-all font-medium">${esc(v||"Not reported")}</span></div>`).join("");
 
-  $("threat").textContent = report.threat_assessment || "—";
+  $("threat").textContent = plain(report.threat_assessment || "Unknown");
   $("threat").style.color = color;
+  const permissionCount = (a.permissions?.dangerous || []).length;
+  const apiCount = (a.apis?.suspicious_apis || []).length;
+  const iocCount = ["domains", "urls", "ips", "telegram_tokens", "hardcoded_secrets"]
+    .reduce((total, key) => total + ((a.iocs?.[key] || []).length), 0);
+  const signatureCount = (a.yara?.matches || []).length;
+  $("stat-perms").textContent = permissionCount;
+  $("stat-apis").textContent = apiCount;
+  $("stat-iocs").textContent = iocCount;
+  $("stat-signatures").textContent = signatureCount;
 
   // AI summary
-  $("exec-summary").textContent = report.executive_summary || "—";
-  $("tech-summary").textContent = report.technical_summary || "";
+  $("exec-summary").textContent = plain(report.executive_summary || "No narrative summary was produced.");
+  $("tech-summary").textContent = plain(report.technical_summary || "");
   $("behaviors").innerHTML = (a.detected_behaviors || []).map(
     b => `<span class="chip" style="background:#1e293b;color:#67e8f9">${esc(b)}</span>`).join("") ||
     '<span class="text-slate-500 text-sm">No high-risk behaviours flagged.</span>';
   renderAgent(a.agentic);
 
   // Breakdown
-  const maxPts = Math.max(...(a.score_breakdown||[]).map(b=>b.points), 1);
   $("breakdown").innerHTML = (a.score_breakdown || []).map(b => `
-    <div>
-      <div class="flex justify-between text-sm mb-0.5">
-        <span class="text-slate-200">${esc(b.category)}</span>
-        <span class="text-cyan-400 font-semibold">+${b.points}</span>
-      </div>
-      <div class="h-1.5 bg-slate-800 rounded"><div class="h-1.5 rounded" style="width:${(b.points/maxPts*100)}%;background:${color}"></div></div>
-      <div class="text-xs text-slate-500 mt-0.5">${esc(b.detail||"")}</div>
+    <div class="finding-row">
+      <div class="finding-score" style="color:${color}">+${Number(b.points) || 0}</div>
+      <div><div class="finding-name">${esc(b.category)}</div><div class="finding-detail">${esc(b.detail||"No detail supplied")}</div></div>
     </div>`).join("") || '<p class="text-slate-500 text-sm">No risk contributions.</p>';
 
   // Permissions
   $("perms").innerHTML = (a.permissions?.dangerous || []).map(p => `
-    <div class="flex items-start gap-2">
-      <span class="chip shrink-0" style="background:#7f1d1d;color:#fecaca">+${p.score}</span>
-      <div><span class="text-slate-200 font-mono text-xs">${esc(p.name)}</span>
-      <div class="text-xs text-slate-500">${esc(p.reason)}</div></div>
+    <div class="finding-row">
+      <div class="finding-score text-rose-300">+${Number(p.score) || 0}</div>
+      <div><div class="finding-name font-mono">${esc(p.name)}</div><div class="finding-detail">${esc(p.reason)}</div></div>
     </div>`).join("") || '<p class="text-slate-500 text-sm">No dangerous permissions.</p>';
 
   // APIs
   $("apis").innerHTML = (a.apis?.suspicious_apis || []).map(x => `
-    <div class="flex items-start gap-2">
-      <span class="chip shrink-0" style="background:#78350f;color:#fed7aa">+${x.score}</span>
-      <div><span class="text-slate-200 font-mono text-xs">${esc(x.api)}</span>
-      <div class="text-xs text-slate-500">${esc(x.behaviour)} · ${esc(x.evidence || "")}</div></div>
+    <div class="finding-row">
+      <div class="finding-score text-amber-300">+${Number(x.score) || 0}</div>
+      <div><div class="finding-name font-mono">${esc(x.api)}</div><div class="finding-detail">${esc(x.behaviour)}. ${esc(x.evidence || "Evidence location unavailable")}</div></div>
     </div>`).join("") || '<p class="text-slate-500 text-sm">No suspicious APIs detected.</p>';
 
   // IOCs
   const i = a.iocs || {};
   const iocBlock = (label, arr) => (arr && arr.length)
-    ? `<div><span class="text-slate-400">${label}:</span> <span class="text-slate-300 break-all font-mono text-xs">${arr.slice(0,15).map(esc).join(", ")}</span></div>` : "";
+    ? `<div class="ioc-group"><span class="ioc-label">${label}</span><span class="ioc-values">${arr.slice(0,15).map(esc).join("<br>")}</span></div>` : "";
   $("iocs").innerHTML = [
     iocBlock("Domains", i.domains), iocBlock("URLs", i.urls), iocBlock("IPs", i.ips),
     iocBlock("Telegram tokens", i.telegram_tokens), iocBlock("Secrets", i.hardcoded_secrets),
-    (i.suspicious_keywords?.length ? `<div><span class="text-slate-400">Keywords:</span> <span class="text-slate-300 text-xs">${i.suspicious_keywords.map(k=>esc(k.keyword)).join(", ")}</span></div>` : ""),
-    (i.decoded_blobs ? `<div class="text-xs text-slate-500">↳ ${i.decoded_blobs} Base64/hex blob(s) decoded &amp; rescanned${i.native_strings_scanned ? ` · ${i.native_strings_scanned} native-lib strings scanned` : ""}</div>` : ""),
+    (i.suspicious_keywords?.length ? `<div class="ioc-group"><span class="ioc-label">Keywords</span><span class="ioc-values">${i.suspicious_keywords.map(k=>esc(k.keyword)).join(", ")}</span></div>` : ""),
+    (i.decoded_blobs ? `<div class="text-xs text-slate-500 px-1">${i.decoded_blobs} encoded blob(s) decoded and rescanned${i.native_strings_scanned ? `. ${i.native_strings_scanned} native-library strings scanned` : ""}</div>` : ""),
   ].filter(Boolean).join("") || '<p class="text-slate-500">No network IOCs found in static strings.</p>';
 
   // Recommendations
   $("recs").innerHTML = (report.recommended_actions || a.recommendations || []).map(
-    r => `<li class="flex gap-2"><span class="text-cyan-400">▸</span><span>${esc(r)}</span></li>`).join("")
+    (r, index) => `<li class="recommendation-item" data-index="${String(index + 1).padStart(2, "0")}">${esc(r)}</li>`).join("")
     || '<li class="text-slate-500">No specific actions.</li>';
 
   // YARA panel
@@ -242,10 +247,9 @@ function render(a, report) {
   if (yara.matches && yara.matches.length) {
     $("yara-card").classList.remove("hidden");
     $("yara-body").innerHTML = yara.matches.map(m => `
-      <div class="flex items-start gap-2">
-        <span class="chip shrink-0" style="background:#581c87;color:#e9d5ff">+${m.score}</span>
-        <div><span class="text-slate-200 font-mono text-xs">${m.rule}</span>
-        <div class="text-xs text-slate-500">${m.description}${m.attack ? ` · ATT&CK ${m.attack}` : ""}</div></div>
+      <div class="finding-row">
+        <div class="finding-score text-fuchsia-300">+${Number(m.score) || 0}</div>
+        <div><div class="finding-name font-mono">${esc(m.rule)}</div><div class="finding-detail">${esc(m.description)}${m.attack ? `. ATT&CK ${esc(m.attack)}` : ""}</div></div>
       </div>`).join("");
   } else {
     $("yara-card").classList.add("hidden");
@@ -328,7 +332,7 @@ function render(a, report) {
     $("cert-card").classList.remove("hidden");
     let html = "";
     if (cert.present) {
-      html += `<div><span class="text-slate-400">Subject:</span> <span class="text-slate-200 font-mono text-xs">${esc(cert.subject || "—")}</span></div>`;
+      html += `<div><span class="text-slate-400">Subject:</span> <span class="text-slate-200 font-mono text-xs">${esc(cert.subject || "Not reported")}</span></div>`;
       if (cert.validity_years != null) html += `<div><span class="text-slate-400">Validity:</span> ${cert.validity_years} yrs${cert.self_signed ? " · self-signed" : ""}</div>`;
       if (cert.sha256) html += `<div><span class="text-slate-400">Cert SHA256:</span> <span class="font-mono text-xs">${short(cert.sha256)}</span></div>`;
     }
@@ -374,7 +378,7 @@ function renderAgent(agent) {
   const gaps = (agent.gaps || []).map(g => `<li>${esc(g)}</li>`).join("");
   const review = agent.gemini_review ? `<div class="mt-3 text-xs text-slate-400">Gemini review: <span class="${agent.gemini_review.grounded ? "text-emerald-400" : "text-amber-400"}">${agent.gemini_review.grounded ? "grounded" : "issues found"}</span>${(agent.gemini_review.unsupported_claims || []).length ? ` · Unsupported: ${agent.gemini_review.unsupported_claims.map(esc).join("; ")}` : ""}</div>` : "";
   body.innerHTML = `
-    <div class="flex flex-wrap gap-2 mb-3"><span class="chip" style="background:#1e293b;color:${statusColor}">${esc(agent.status)}</span><span class="chip" style="background:#1e293b;color:#cbd5e1">${esc(agent.provider || "—")} · ${esc(agent.model || "—")}</span><span class="chip" style="background:#1e293b;color:#cbd5e1">${esc(agent.steps_used || 0)} steps · ${esc(agent.duration_ms || 0)} ms</span></div>
+    <div class="flex flex-wrap gap-2 mb-3"><span class="chip" style="background:#1e293b;color:${statusColor}">${esc(agent.status)}</span><span class="chip" style="background:#1e293b;color:#cbd5e1">${esc(agent.provider || "Unavailable")} / ${esc(agent.model || "Unavailable")}</span><span class="chip" style="background:#1e293b;color:#cbd5e1">${esc(agent.steps_used || 0)} steps, ${esc(agent.duration_ms || 0)} ms</span></div>
     <div class="space-y-2">${hypotheses}</div>
     ${gaps ? `<div class="mt-3"><div class="text-xs uppercase tracking-wide text-slate-500">Evidence gaps</div><ul class="list-disc pl-5 mt-1 text-slate-400">${gaps}</ul></div>` : ""}
     ${review}
@@ -392,8 +396,8 @@ $("agent-run-btn")?.addEventListener("click", async () => {
     if (!response.ok) throw new Error(data.detail || "Agentic investigation failed");
     currentAnalysis.agentic = data.agentic;
     currentReport = data.report || currentReport;
-    $("exec-summary").textContent = currentReport.executive_summary || "—";
-    $("tech-summary").textContent = currentReport.technical_summary || "";
+    $("exec-summary").textContent = plain(currentReport.executive_summary || "No narrative summary was produced.");
+    $("tech-summary").textContent = plain(currentReport.technical_summary || "");
     renderAgent(data.agentic);
   } catch (error) {
     body.innerHTML = `<p class="text-rose-400">${esc(error.message)}</p>`;
@@ -418,7 +422,7 @@ async function loadHistory() {
           <span class="text-slate-500 text-xs ml-2 font-mono">${esc(s.package_name || "")}</span>
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <span class="text-slate-400 text-sm">${s.risk_score ?? "—"}</span>${SEV_CHIP(s.severity)}
+          <span class="text-slate-400 text-sm">${s.risk_score ?? "Unknown"}</span>${SEV_CHIP(s.severity)}
         </div>
       </div>`).join("");
     $("history-list").querySelectorAll("[data-id]").forEach(el => {
@@ -530,6 +534,6 @@ function renderDynamic(d) {
         ? `<p class="text-slate-500 text-xs mt-2">No notable runtime behaviour observed in ${d.duration}s (app may need interaction, or is benign).</p>` : "");
 }
 
-function short(h) { return h ? `${h.slice(0, 10)}…${h.slice(-6)}` : "—"; }
-function showError(msg) { const e = $("error-box"); e.textContent = msg; e.classList.remove("hidden"); }
+function short(h) { return h ? `${h.slice(0, 10)}…${h.slice(-6)}` : "Not reported"; }
+function showError(msg) { const e = $("error-box"); e.textContent = plain(msg); e.classList.remove("hidden"); }
 function hideError() { $("error-box").classList.add("hidden"); }

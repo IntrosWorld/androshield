@@ -94,6 +94,63 @@
     .workflow-step::before { content: attr(data-step); position: absolute; left: 0; top: .05rem; color: #67e8f9; font: 700 10px/1 ui-monospace, SFMono-Regular, monospace; }
     .history-row { border: 1px solid transparent; }
     .history-row:hover { border-color: rgba(148,163,184,.12); background: rgba(255,255,255,.035); }
+    .result-shell {
+      overflow: hidden;
+      border: 1px solid rgba(148,163,184,.18);
+      border-radius: 16px;
+      background: #0d1424;
+      box-shadow: 0 28px 72px rgba(2,6,23,.3);
+    }
+    .case-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1.25rem;
+      padding: 1.15rem 1.35rem;
+      border-bottom: 1px solid rgba(148,163,184,.13);
+      background: rgba(15,23,42,.72);
+    }
+    .case-label { color: #67e8f9; font: 700 11px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+    .case-filename { margin-top: .35rem; color: #f8fafc; font-size: 1.05rem; font-weight: 720; overflow-wrap: anywhere; }
+    .case-package { margin-top: .2rem; color: #64748b; font: 500 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+    .verdict-grid { display: grid; grid-template-columns: minmax(250px,.78fr) minmax(0,2.22fr); }
+    .score-column { display: grid; place-items: center; padding: 1.4rem; border-right: 1px solid rgba(148,163,184,.13); }
+    .sample-column { min-width: 0; padding: 1.35rem; }
+    .severity-scale { width: 100%; max-width: 270px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 4px; margin-top: 1rem; }
+    .severity-level { padding: .45rem .2rem; border: 1px solid rgba(148,163,184,.12); border-radius: 7px; color: #64748b; background: #10192a; text-align: center; font: 700 9px/1.25 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; }
+    .severity-scale[data-active="low"] .severity-level[data-level="low"] { color: #bbf7d0; border-color: #22c55e; background: rgba(34,197,94,.12); }
+    .severity-scale[data-active="medium"] .severity-level[data-level="medium"] { color: #fef08a; border-color: #eab308; background: rgba(234,179,8,.12); }
+    .severity-scale[data-active="high"] .severity-level[data-level="high"] { color: #fed7aa; border-color: #f97316; background: rgba(249,115,22,.12); }
+    .severity-scale[data-active="critical"] .severity-level[data-level="critical"] { color: #fecaca; border-color: #ef4444; background: rgba(239,68,68,.12); }
+    .metric-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin-top: 1.15rem; border: 1px solid rgba(148,163,184,.12); border-radius: 12px; overflow: hidden; }
+    .metric { min-width: 0; padding: .8rem .9rem; background: rgba(15,23,42,.58); }
+    .metric + .metric { border-left: 1px solid rgba(148,163,184,.12); }
+    .metric-value { display: block; color: #f8fafc; font: 720 1.15rem/1.15 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .metric-label { display: block; margin-top: .2rem; color: #64748b; font-size: 10px; line-height: 1.25; text-transform: uppercase; letter-spacing: .06em; }
+    .evidence-nav { position: sticky; top: .75rem; z-index: 20; display: flex; gap: .35rem; padding: .4rem; overflow-x: auto; border: 1px solid rgba(148,163,184,.14); border-radius: 12px; background: rgba(8,13,25,.94); backdrop-filter: blur(14px); }
+    .evidence-nav a { flex: none; padding: .55rem .8rem; border-radius: 8px; color: #94a3b8; font-size: .75rem; font-weight: 650; white-space: nowrap; }
+    .evidence-nav a:hover, .evidence-nav a:focus-visible { color: #ecfeff; background: rgba(34,211,238,.09); }
+    .workspace-section { scroll-margin-top: 5rem; }
+    .section-intro { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
+    .section-intro h2 { color: #f8fafc; font-size: 1rem; font-weight: 720; }
+    .section-intro p { color: #64748b; font-size: .75rem; }
+    .evidence-panel { min-width: 0; border: 1px solid rgba(148,163,184,.14); border-radius: 14px; background: #0d1424; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .9rem 1rem; border-bottom: 1px solid rgba(148,163,184,.11); }
+    .panel-title { display: flex; align-items: center; gap: .5rem; color: #dbeafe; font-size: .75rem; font-weight: 750; letter-spacing: .045em; text-transform: uppercase; }
+    .panel-body { padding: 1rem; }
+    .finding-list { display: grid; gap: .5rem; }
+    .finding-row { display: grid; grid-template-columns: 48px minmax(0,1fr); gap: .75rem; align-items: start; padding: .72rem; border-radius: 10px; background: #10192a; }
+    .finding-score { padding-top: .08rem; color: #f8fafc; font: 750 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
+    .finding-name { color: #e2e8f0; font-size: .78rem; font-weight: 680; overflow-wrap: anywhere; }
+    .finding-detail { margin-top: .18rem; color: #718096; font-size: .7rem; line-height: 1.45; overflow-wrap: anywhere; }
+    .ioc-grid { display: grid; gap: .6rem; }
+    .ioc-group { display: grid; grid-template-columns: 88px minmax(0,1fr); gap: .65rem; align-items: start; padding: .7rem .75rem; border-radius: 10px; background: #10192a; }
+    .ioc-label { color: #64748b; font-size: .65rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+    .ioc-values { color: #cbd5e1; font: 500 .7rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+    .recommendation-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .55rem; }
+    .recommendation-item { position: relative; min-height: 64px; padding: .8rem .85rem .8rem 2.45rem; border-radius: 10px; background: #10192a; color: #cbd5e1; line-height: 1.45; }
+    .recommendation-item::before { content: attr(data-index); position: absolute; left: .85rem; top: .85rem; color: #67e8f9; font: 750 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .sandbox-panel { border-color: rgba(245,158,11,.28); background: linear-gradient(180deg,rgba(120,53,15,.09),#0d1424 52%); }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 640px) {
       body { overflow-x: hidden; }
@@ -104,6 +161,16 @@
       .dropzone p { overflow-wrap: anywhere; }
       .btn-mobile-full { width: 100%; }
       .glass { backdrop-filter: blur(10px); }
+      .case-header { flex-direction: column; }
+      .verdict-grid { grid-template-columns: 1fr; }
+      .score-column { border-right: 0; border-bottom: 1px solid rgba(148,163,184,.13); }
+      .metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .metric:nth-child(3) { border-left: 0; border-top: 1px solid rgba(148,163,184,.12); }
+      .metric:nth-child(4) { border-top: 1px solid rgba(148,163,184,.12); }
+      .section-intro { display: block; }
+      .section-intro p { margin-top: .2rem; }
+      .ioc-group { grid-template-columns: 1fr; gap: .25rem; }
+      .recommendation-grid { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
@@ -113,7 +180,7 @@
 </head>
 <body class="text-slate-200 min-h-screen">
   <a class="skip-link" href="#main-content">Skip to analysis workspace</a>
-  <main id="main-content" class="relative max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+  <main id="main-content" class="relative max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
     <!-- Header -->
     <header class="flex items-start sm:items-center justify-between gap-5 mb-7 flex-col sm:flex-row">
       <div class="w-full min-w-0 sm:w-auto">
@@ -173,191 +240,146 @@
     <section id="error-box" class="hidden glass border-red-500/40 rounded-xl p-4 mb-6 text-red-300 text-sm" role="alert"></section>
 
     <!-- Results -->
-    <section id="results" class="hidden space-y-6">
-      <!-- Top: gauge + meta -->
-      <div class="grid md:grid-cols-3 gap-6">
-        <div class="glass rounded-2xl p-6 flex flex-col items-center justify-center">
-          <div class="gauge-wrap">
-            <canvas id="gauge" width="180" height="180"></canvas>
-            <div class="gauge-text">
-              <span id="score-num" class="text-4xl font-bold text-white">0</span>
-              <span class="text-xs text-slate-400">/ 100</span>
-              <span id="severity-chip" class="chip mt-2">—</span>
-            </div>
+    <section id="results" class="hidden space-y-4">
+      <section id="overview" class="result-shell workspace-section" aria-labelledby="case-title">
+        <header class="case-header">
+          <div class="min-w-0">
+            <p class="case-label">Static analysis verdict</p>
+            <h2 id="case-title" class="case-filename">Analyzed APK</h2>
+            <p id="case-package" class="case-package">Package unavailable</p>
           </div>
-        </div>
-        <div class="glass rounded-2xl p-6 md:col-span-2">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Sample</h3>
-          <div id="meta" class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm"></div>
-          <div class="mt-4">
-            <span class="text-xs text-slate-400">Threat assessment: </span>
-            <span id="threat" class="font-semibold text-white">—</span>
-          </div>
-          <div class="mt-5 flex flex-wrap gap-2">
+          <div class="flex flex-wrap gap-2">
             <button id="pdf-btn" class="btn-secondary">
               <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#document-pdf"></use></svg>
-              PDF Report
+              PDF report
             </button>
             <button id="ioc-csv-btn" class="btn-secondary">
               <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#download"></use></svg>
-              IOCs (CSV)
+              IOC CSV
             </button>
             <button id="ioc-json-btn" class="btn-secondary">
               <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#download"></use></svg>
-              IOCs (JSON)
+              IOC JSON
             </button>
           </div>
-        </div>
-      </div>
-
-      <!-- AI summary -->
-      <div class="glass rounded-2xl p-6">
-        <h3 class="text-lg font-semibold text-white mb-2 flex items-center gap-2">
-          <svg class="carbon-icon w-5 h-5 text-slate-200" aria-hidden="true"><use href="icons/carbon.svg#machine-learning-model"></use></svg>
-          AI Threat Explanation
-        </h3>
-        <p id="exec-summary" class="text-slate-200 mb-3"></p>
-        <p id="tech-summary" class="text-slate-400 text-sm"></p>
-        <div id="behaviors" class="flex flex-wrap gap-2 mt-4"></div>
-      </div>
-
-      <!-- Bounded agentic investigation -->
-      <div id="agent-card" class="glass rounded-2xl p-6 border-cyan-500/20">
-        <div class="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <h3 class="text-lg font-semibold text-white flex items-center gap-2"><svg class="carbon-icon w-5 h-5 text-slate-200" aria-hidden="true"><use href="icons/carbon.svg#search-advanced"></use></svg>Agentic Evidence Investigation</h3>
-            <p class="text-xs text-slate-500 mt-1">Local, allowlisted and read-only. The agent cannot execute the APK or change its score.</p>
+        </header>
+        <div class="verdict-grid">
+          <div class="score-column">
+            <div class="gauge-wrap">
+              <canvas id="gauge" width="180" height="180"></canvas>
+              <div class="gauge-text">
+                <span id="score-num" class="text-4xl font-bold text-white">0</span>
+                <span class="text-xs text-slate-400">out of 100</span>
+                <span id="severity-chip" class="chip mt-2">Unknown</span>
+              </div>
+            </div>
+            <div id="severity-scale" class="severity-scale" data-active="unknown" aria-label="Risk severity levels">
+              <span class="severity-level" data-level="low">Low<br>0-20</span>
+              <span class="severity-level" data-level="medium">Medium<br>21-40</span>
+              <span class="severity-level" data-level="high">High<br>41-70</span>
+              <span class="severity-level" data-level="critical">Critical<br>71-100</span>
+            </div>
           </div>
-          <button id="agent-run-btn" class="btn-primary" disabled>
-            Run AI Investigation
-          </button>
+          <div class="sample-column">
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs text-slate-500">Threat assessment</span>
+              <span id="threat" class="text-xl font-semibold text-white">Unknown</span>
+            </div>
+            <div id="meta" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-7 gap-y-3 mt-5 text-sm"></div>
+            <div class="metric-grid" aria-label="Finding totals">
+              <div class="metric"><span id="stat-perms" class="metric-value">0</span><span class="metric-label">Dangerous permissions</span></div>
+              <div class="metric"><span id="stat-apis" class="metric-value">0</span><span class="metric-label">Suspicious APIs</span></div>
+              <div class="metric"><span id="stat-iocs" class="metric-value">0</span><span class="metric-label">Network IOCs</span></div>
+              <div class="metric"><span id="stat-signatures" class="metric-value">0</span><span class="metric-label">YARA matches</span></div>
+            </div>
+          </div>
         </div>
-        <div id="agent-body" class="mt-4 text-sm text-slate-400">
-          Agentic investigation is not enabled for this server.
-        </div>
-      </div>
+      </section>
 
-      <!-- Grid: breakdown + permissions -->
-      <div class="grid md:grid-cols-2 gap-6">
-        <div class="glass rounded-2xl p-6">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Risk Score Breakdown</h3>
-          <div id="breakdown" class="space-y-2"></div>
-        </div>
-        <div class="glass rounded-2xl p-6">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Dangerous Permissions</h3>
-          <div id="perms" class="space-y-2 max-h-72 overflow-y-auto"></div>
-        </div>
-      </div>
+      <nav class="evidence-nav" aria-label="Analysis sections">
+        <a href="#narrative">Assessment</a>
+        <a href="#static-evidence">Static evidence</a>
+        <a href="#threat-intel">Threat mapping</a>
+        <a href="#sandbox">Sandbox</a>
+        <a href="#action-plan">Action plan</a>
+      </nav>
 
-      <!-- Grid: APIs + IOCs -->
-      <div class="grid md:grid-cols-2 gap-6">
-        <div class="glass rounded-2xl p-6">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Suspicious APIs</h3>
-          <div id="apis" class="space-y-2 max-h-72 overflow-y-auto"></div>
+      <section id="narrative" class="workspace-section">
+        <div class="section-intro"><h2>Assessment</h2><p>Human-readable triage plus a bounded evidence review.</p></div>
+        <div class="grid lg:grid-cols-5 gap-4">
+          <article class="evidence-panel lg:col-span-2">
+            <div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#machine-learning-model"></use></svg>Threat explanation</h3></div>
+            <div class="panel-body">
+              <p id="exec-summary" class="text-slate-200 leading-relaxed"></p>
+              <p id="tech-summary" class="text-slate-500 text-xs leading-relaxed mt-3"></p>
+              <div id="behaviors" class="flex flex-wrap gap-1.5 mt-4"></div>
+            </div>
+          </article>
+          <article id="agent-card" class="evidence-panel lg:col-span-3">
+            <div class="panel-head flex-wrap">
+              <div>
+                <h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#search-advanced"></use></svg>Agentic evidence investigation</h3>
+                <p class="text-xs text-slate-500 mt-1">Allowlisted evidence tools only. The agent cannot execute the APK or alter its score.</p>
+              </div>
+              <button id="agent-run-btn" class="btn-primary" disabled>Run AI investigation</button>
+            </div>
+            <div id="agent-body" class="panel-body text-sm text-slate-400">Agentic investigation is not enabled for this server.</div>
+          </article>
         </div>
-        <div class="glass rounded-2xl p-6">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Indicators of Compromise</h3>
-          <div id="iocs" class="space-y-3 max-h-72 overflow-y-auto text-sm"></div>
-        </div>
-      </div>
+      </section>
 
-      <!-- YARA + MITRE -->
-      <div class="grid md:grid-cols-2 gap-6">
-        <div id="yara-card" class="glass rounded-2xl p-6 hidden">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-            <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#rule"></use></svg>
-            YARA Signature Matches
-          </h3>
-          <div id="yara-body" class="space-y-2"></div>
+      <section id="static-evidence" class="workspace-section">
+        <div class="section-intro"><h2>Static evidence</h2><p>Deterministic findings that produced the score.</p></div>
+        <div class="grid lg:grid-cols-2 gap-4">
+          <article class="evidence-panel"><div class="panel-head"><h3 class="panel-title">Score contributions</h3></div><div id="breakdown" class="panel-body finding-list"></div></article>
+          <article class="evidence-panel"><div class="panel-head"><h3 class="panel-title">Dangerous permissions</h3></div><div id="perms" class="panel-body finding-list max-h-[34rem] overflow-y-auto"></div></article>
+          <article class="evidence-panel"><div class="panel-head"><h3 class="panel-title">Suspicious APIs</h3></div><div id="apis" class="panel-body finding-list max-h-[30rem] overflow-y-auto"></div></article>
+          <article class="evidence-panel"><div class="panel-head"><h3 class="panel-title">Indicators of compromise</h3></div><div id="iocs" class="panel-body ioc-grid max-h-[30rem] overflow-y-auto"></div></article>
         </div>
-        <div id="mitre-card" class="glass rounded-2xl p-6 hidden">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-            <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#network-3"></use></svg>
-            MITRE ATT&amp;CK (Mobile)
-          </h3>
-          <div id="mitre-body" class="flex flex-wrap gap-2"></div>
-        </div>
-      </div>
+      </section>
 
-      <!-- Certificate + attack surface -->
-      <div id="cert-card" class="glass rounded-2xl p-6 hidden">
-        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-          <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#certificate"></use></svg>
-          Certificate &amp; Attack Surface
-        </h3>
-        <div id="cert-body" class="text-sm space-y-1.5"></div>
-      </div>
+      <section id="threat-intel" class="workspace-section">
+        <div class="section-intro"><h2>Threat mapping</h2><p>Signatures, ATT&amp;CK techniques, identity, and optional intelligence layers.</p></div>
+        <div class="grid lg:grid-cols-2 gap-4">
+          <article id="yara-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#rule"></use></svg>YARA signature matches</h3></div><div id="yara-body" class="panel-body finding-list"></div></article>
+          <article id="mitre-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#network-3"></use></svg>MITRE ATT&amp;CK Mobile</h3></div><div id="mitre-body" class="panel-body flex flex-wrap gap-2"></div></article>
+          <article id="cert-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#certificate"></use></svg>Certificate and attack surface</h3></div><div id="cert-body" class="panel-body text-sm space-y-2"></div></article>
+          <article id="ml-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#analytics"></use></svg>ML classifier verdict</h3></div><div id="ml-body" class="panel-body text-sm"></div></article>
+          <article id="apkid-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#application-mobile"></use></svg>APKiD fingerprint</h3></div><div id="apkid-body" class="panel-body text-sm space-y-2"></div></article>
+          <article id="vt-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#security-services"></use></svg>VirusTotal corroboration</h3></div><div id="vt-body" class="panel-body text-sm"></div></article>
+        </div>
+      </section>
 
-      <!-- ML + APKiD -->
-      <div class="grid md:grid-cols-2 gap-6">
-        <div id="ml-card" class="glass rounded-2xl p-6 hidden">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-            <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#analytics"></use></svg>
-            ML Classifier Verdict
-          </h3>
-          <div id="ml-body" class="text-sm"></div>
-        </div>
-        <div id="apkid-card" class="glass rounded-2xl p-6 hidden">
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-            <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#application-mobile"></use></svg>
-            APKiD Fingerprint
-          </h3>
-          <div id="apkid-body" class="text-sm space-y-1.5"></div>
-        </div>
-      </div>
+      <section id="sandbox" class="workspace-section">
+        <div class="section-intro"><h2>Sandbox</h2><p>Optional runtime analysis, isolated from the static pipeline.</p></div>
+        <article class="evidence-panel sandbox-panel">
+          <div class="panel-head flex-wrap">
+            <div>
+              <h3 class="panel-title text-amber-200"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#mobile"></use></svg>Dynamic analysis in an emulator</h3>
+              <p class="text-xs text-slate-500 mt-1">Installs and runs the APK only in the selected isolated Android virtual device.</p>
+            </div>
+            <span id="emu-status" class="text-xs"></span>
+          </div>
+          <div class="panel-body">
+            <div class="flex items-end gap-3 flex-wrap">
+              <label class="text-xs text-slate-400">Device<br><select id="dyn-device" class="control mt-1 text-sm min-w-[12rem] max-w-[16rem]"></select></label>
+              <label class="text-xs text-slate-400">Observation window<br><select id="dyn-duration" class="control mt-1 text-sm"><option value="10">10 seconds</option><option value="15" selected>15 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option></select></label>
+              <label class="control text-sm text-slate-300 flex items-center gap-2"><input type="checkbox" id="dyn-frida" class="accent-cyan-500">Frida hooks</label>
+              <button id="dyn-run-btn" class="btn-warning"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#play-filled"></use></svg>Run in emulator</button>
+            </div>
+            <div id="dyn-loading" class="hidden mt-4 text-sm text-slate-400" role="status" aria-live="polite"><span class="inline-block w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin align-middle"></span><span id="dyn-loading-text" class="align-middle ml-2">Running in emulator…</span></div>
+            <div id="dyn-results" class="hidden mt-4"></div>
+          </div>
+        </article>
+      </section>
 
-      <!-- VirusTotal -->
-      <div id="vt-card" class="glass rounded-2xl p-6 hidden">
-        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-          <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#security-services"></use></svg>
-          VirusTotal Corroboration
-        </h3>
-        <div id="vt-body" class="text-sm"></div>
-      </div>
-
-      <!-- Dynamic analysis (emulator) -->
-      <div class="glass rounded-2xl p-6 border-amber-500/20">
-        <div class="flex items-center justify-between flex-wrap gap-3">
-          <h3 class="text-lg font-semibold text-white flex items-center gap-2">
-            <svg class="carbon-icon w-5 h-5" aria-hidden="true"><use href="icons/carbon.svg#mobile"></use></svg>
-            Dynamic Analysis <span class="text-xs font-normal text-slate-500">(emulator sandbox)</span>
-          </h3>
-          <span id="emu-status" class="text-xs"></span>
-        </div>
-        <p class="text-xs text-slate-500 mt-1">Installs &amp; runs the APK in your attached emulator to observe runtime behaviour. Use an isolated AVD.</p>
-        <div class="flex items-center gap-3 mt-4 flex-wrap">
-          <label class="text-sm text-slate-400">Device
-            <select id="dyn-device" class="control ml-1 text-sm max-w-[14rem]"></select>
-          </label>
-          <label class="text-sm text-slate-400">Duration
-            <select id="dyn-duration" class="control ml-1 text-sm">
-              <option value="10">10s</option><option value="15" selected>15s</option>
-              <option value="30">30s</option><option value="60">60s</option>
-            </select>
-          </label>
-          <label class="text-sm text-slate-400 flex items-center gap-1.5">
-            <input type="checkbox" id="dyn-frida" class="accent-cyan-500"> Frida hooks
-          </label>
-          <button id="dyn-run-btn" class="btn-warning">
-            <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#play-filled"></use></svg>
-            Run in Emulator
-          </button>
-        </div>
-        <div id="dyn-loading" class="hidden mt-4 text-sm text-slate-400" role="status" aria-live="polite">
-          <span class="inline-block w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin align-middle"></span>
-          <span id="dyn-loading-text" class="align-middle ml-2">Running in emulator…</span>
-        </div>
-        <div id="dyn-results" class="hidden mt-4"></div>
-      </div>
-
-      <!-- Recommendations -->
-      <div class="glass rounded-2xl p-6">
-        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Recommended Actions</h3>
-        <ul id="recs" class="space-y-1.5 text-sm"></ul>
-      </div>
+      <section id="action-plan" class="workspace-section pb-8">
+        <div class="section-intro"><h2>Action plan</h2><p>Prioritized response steps generated from the extracted evidence.</p></div>
+        <article class="evidence-panel"><div class="panel-head"><h3 class="panel-title">Recommended analyst actions</h3></div><ol id="recs" class="panel-body recommendation-grid text-sm"></ol></article>
+      </section>
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=analyst-workspace-4"></script>
 </body>
 </html>

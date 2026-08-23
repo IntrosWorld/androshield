@@ -10,22 +10,37 @@ investigation report → PDF export. Built for banking-fraud / SOC first-level t
 
 ## Dashboard
 
-![APK Fraud Analyzer desktop dashboard](docs/images/dashboard-desktop.png)
+The analyst console keeps upload, deterministic triage, evidence review, optional AI,
+and emulator-only runtime analysis visibly separated. It uses the IBM Carbon icon
+language and does not need a frontend build step.
 
-The dashboard keeps the investigation flow explicit: upload an APK for static triage,
-review the explainable score and extracted evidence, optionally run the bounded AI
-investigator, and deliberately opt into emulator analysis when runtime evidence is
-needed. The interface uses the IBM Carbon icon system and remains usable on compact
-screens without a separate frontend build step.
+| Upload workspace | Compact responsive layout |
+|---|---|
+| ![APK upload workspace](docs/images/dashboard-desktop.png) | ![Compact APK upload workspace](docs/images/dashboard-compact.png) |
 
-### Compact responsive layout
+### Real CIC MalDroid banking analysis
 
-![APK Fraud Analyzer compact dashboard](docs/images/dashboard-compact.png)
+The populated views below come from a real 468,037-byte Banking-family APK extracted
+from the [CIC MalDroid-2020 dataset](https://www.unb.ca/cic/datasets/maldroid-2020.html).
+Its SHA256 is `a6408087c77ee164ace8800fa008a91ac2c41a004c7a0b940e7ccfe4fe591725`.
+The APK was submitted only to `/api/analyze`; it was never installed or executed.
+
+| Risk verdict and severity levels | Threat explanation and bounded agent |
+|---|---|
+| ![CIC sample risk verdict](docs/images/cic-verdict-overview.png) | ![CIC sample assessment](docs/images/cic-assessment.png) |
+
+| Score contributions and permissions | Suspicious APIs and network IOCs |
+|---|---|
+| ![CIC score contributions and permissions](docs/images/cic-static-evidence.png) | ![CIC suspicious APIs and IOCs](docs/images/cic-api-ioc-evidence.png) |
+
+| YARA, MITRE, certificate, and APKiD | Emulator boundary and response plan |
+|---|---|
+| ![CIC threat mapping](docs/images/cic-threat-mapping.png) | ![CIC sandbox controls and analyst actions](docs/images/cic-sandbox-action-plan.png) |
 
 Key UI capabilities:
 
 - Drag-and-drop APK selection with clear static-analysis safety messaging.
-- Explainable risk gauge, score breakdown, permissions, APIs, IOCs, signatures, and ATT&CK mapping.
+- Explainable risk gauge, severity thresholds, score contributions, permissions, APIs, IOCs, signatures, and ATT&CK mapping.
 - Bounded local/Gemini investigation with an auditable action trail.
 - PDF and IOC exports, persisted sample history, and explicit emulator-only dynamic analysis.
 

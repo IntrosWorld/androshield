@@ -83,6 +83,26 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('button.classList.toggle("btn-busy", busy)', JS)
         self.assertGreaterEqual(JS.count("setButtonBusy("), 7)
 
+    def test_populated_results_use_the_analyst_workspace(self):
+        for element_id in (
+            "overview",
+            "severity-scale",
+            "narrative",
+            "static-evidence",
+            "threat-intel",
+            "sandbox",
+            "action-plan",
+        ):
+            tag_with_id(HTML, element_id)
+
+        self.assertIn('class="evidence-nav"', HTML)
+        self.assertIn('class="result-shell workspace-section"', HTML)
+        self.assertIn('class="panel-body finding-list"', HTML)
+        self.assertIn('class="panel-body recommendation-grid text-sm"', HTML)
+        self.assertIn('$("severity-scale").dataset.active', JS)
+        self.assertNotIn("—", HTML + JS)
+        self.assertNotIn("–", HTML + JS)
+
 
 if __name__ == "__main__":
     unittest.main()
