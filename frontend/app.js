@@ -24,6 +24,39 @@ const safeHttpUrl = (value) => {
   } catch (_) { return "#"; }
 };
 
+const THEME_STORAGE_KEY = "apk-analyzer-theme";
+
+function updateThemeControl(theme) {
+  const button = $("theme-toggle");
+  const icon = $("theme-icon");
+  const label = $("theme-label");
+  if (!button || !icon || !label) return;
+  const light = theme === "light";
+  const nextLabel = light ? "Dark mode" : "Light mode";
+  button.setAttribute("aria-pressed", String(light));
+  button.setAttribute("aria-label", `Switch to ${nextLabel.toLowerCase()}`);
+  icon.className = `ti ${light ? "ti-moon" : "ti-sun"}`;
+  label.textContent = nextLabel;
+}
+
+function applyTheme(theme, persist = true) {
+  const next = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  document.documentElement.classList.toggle("dark", next === "dark");
+  updateThemeControl(next);
+  if (persist) {
+    try { localStorage.setItem(THEME_STORAGE_KEY, next); } catch (_) {}
+  }
+  if (currentAnalysis?.risk_score != null) {
+    drawGauge(currentAnalysis.risk_score, SEV_COLORS[currentAnalysis.severity] || SEV_COLORS.Unknown);
+  }
+}
+
+applyTheme(document.documentElement.dataset.theme, false);
+$("theme-toggle")?.addEventListener("click", () => {
+  applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+});
+
 function setButtonBusy(button, busy, busyLabel) {
   if (!button) return;
   if (busy && !button.dataset.idleHtml) button.dataset.idleHtml = button.innerHTML;
@@ -456,7 +489,7 @@ function drawGauge(score, color) {
   if (gaugeChart) gaugeChart.destroy();
   gaugeChart = new Chart(ctx, {
     type: "doughnut",
-    data: { datasets: [{ data: [score, 100 - score], backgroundColor: [color, "#1e293b"], borderWidth: 0 }] },
+    data: { datasets: [{ data: [score, 100 - score], backgroundColor: [color, getComputedStyle(document.documentElement).getPropertyValue("--gauge-track").trim() || "#1e293b"], borderWidth: 0 }] },
     options: { cutout: "78%", rotation: -90, circumference: 360, plugins: { tooltip: { enabled: false }, legend: { display: false } }, responsive: false },
   });
 }

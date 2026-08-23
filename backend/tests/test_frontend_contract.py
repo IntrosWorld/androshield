@@ -72,6 +72,18 @@ class FrontendContractTests(unittest.TestCase):
         for element_id in ("pdf-btn", "ioc-csv-btn", "ioc-json-btn"):
             self.assertIn("btn-secondary", tag_with_id(HTML, element_id))
 
+    def test_light_and_dark_theme_switch_is_accessible_and_persistent(self):
+        toggle = tag_with_id(HTML, "theme-toggle")
+        self.assertRegex(toggle, r'type=["\']button["\']')
+        self.assertRegex(toggle, r'aria-pressed=["\']false["\']')
+        self.assertIn('data-theme="dark"', HTML)
+        self.assertIn('html[data-theme="light"]', HTML)
+        self.assertIn('localStorage.getItem("apk-analyzer-theme")', HTML)
+        self.assertIn('const THEME_STORAGE_KEY = "apk-analyzer-theme"', JS)
+        self.assertIn('localStorage.setItem(THEME_STORAGE_KEY, next)', JS)
+        self.assertIn('$("theme-toggle")?.addEventListener("click"', JS)
+        self.assertIn('--gauge-track', HTML + JS)
+
     def test_busy_helper_preserves_labels_and_exposes_state(self):
         self.assertIn("function setButtonBusy(", JS)
         self.assertIn('button.setAttribute("aria-busy", String(busy))', JS)
