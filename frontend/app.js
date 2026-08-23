@@ -62,7 +62,7 @@ function updateEmuStatus() {
   if (d.available) {
     const dev = d.device || {};
     if (d.sandbox_present) {
-      el.innerHTML = `<span class="chip" style="background:#065f46;color:#a7f3d0">● ${esc(dev.avd_name || d.serial)}${dev.android_version ? " · Android " + esc(dev.android_version) : ""}</span>`
+      el.innerHTML = `<span class="chip" style="background:#134e4a;color:#a7f3d0"><i class="ti ti-device-mobile" aria-hidden="true"></i> ${esc(dev.avd_name || d.serial)}${dev.android_version ? ", Android " + esc(dev.android_version) : ""}</span>`
         + (healthData.frida_available ? ` <span class="chip" style="background:#1e293b;color:#67e8f9">Frida ready</span>` : "");
     } else {
       el.innerHTML = `<span class="chip" style="background:#78350f;color:#fed7aa">${esc(d.preferred_avd)} not running: pick a device deliberately</span>`;
@@ -111,7 +111,7 @@ function setFile(f) {
     return;
   }
   selectedFile = f;
-  $("file-name").textContent = `Selected: ${plain(f.name)} · ${(f.size / 1048576).toFixed(2)} MB`;
+  $("file-name").textContent = `Selected: ${plain(f.name)}, ${(f.size / 1048576).toFixed(2)} MB`;
   $("analyze-btn").disabled = false;
   dropzone.classList.add("has-file");
   hideError();
@@ -274,14 +274,14 @@ function render(a, report) {
     const c = prob >= 0.5 ? "#ef4444" : "#22c55e";
     const m = ml.model_metrics || {};
     $("ml-body").innerHTML =
-      `<div class="flex items-baseline gap-2 mb-2"><span class="text-2xl font-bold" style="color:${c}">${pct}%</span>`
-      + `<span class="text-slate-400">ML decision → <span class="font-semibold" style="color:${c}">${esc((ml.prediction||"").replace("_", " ").toUpperCase())}</span></span></div>`
-      + `<div class="h-2 bg-slate-800 rounded mb-2"><div class="h-2 rounded" style="width:${pct}%;background:${c}"></div></div>`
+      `<div class="flex items-baseline gap-2 mb-2"><span class="text-2xl font-medium font-mono" style="color:${c}">${pct}%</span>`
+      + `<span class="text-slate-400">ML decision: <span class="font-medium" style="color:${c}">${esc((ml.prediction||"").replace("_", " ").toUpperCase())}</span></span></div>`
+      + `<div class="h-px mb-3" style="width:${pct}%;background:${c}"></div>`
       + ((ml.contributing_permissions||[]).length
           ? `<div class="text-xs text-slate-400 mb-1">Top contributing permissions:</div><div class="flex flex-wrap gap-1.5">`
             + ml.contributing_permissions.map(p => `<span class="chip" style="background:#1e293b;color:#93c5fd">${esc(p.permission)}</span>`).join("") + `</div>`
           : "")
-      + (m.f1_malware != null ? `<div class="text-xs text-slate-500 mt-3">Model: precision ${m.precision_malware?.toFixed(2)} · recall ${m.recall_malware?.toFixed(2)} · F1 ${m.f1_malware?.toFixed(2)}${m.roc_auc!=null?` · AUC ${m.roc_auc.toFixed(2)}`:""} (n=${m.n_samples})</div>` : "");
+      + (m.f1_malware != null ? `<div class="text-xs text-slate-500 mt-3">Model: precision ${m.precision_malware?.toFixed(2)}, recall ${m.recall_malware?.toFixed(2)}, F1 ${m.f1_malware?.toFixed(2)}${m.roc_auc!=null?`, AUC ${m.roc_auc.toFixed(2)}`:""} (n=${m.n_samples})</div>` : "");
   } else {
     $("ml-card").classList.add("hidden");
   }
@@ -309,7 +309,7 @@ function render(a, report) {
       const mal = fr.malicious || 0, tot = fr.total_engines || 0;
       const c = mal > 0 ? "#ef4444" : "#22c55e";
       vtBody.innerHTML =
-        `<div class="flex items-baseline gap-2 mb-2"><span class="text-2xl font-bold" style="color:${c}">${mal}</span>`
+        `<div class="flex items-baseline gap-2 mb-2"><span class="text-2xl font-medium font-mono" style="color:${c}">${mal}</span>`
         + `<span class="text-slate-400">/ ${tot} engines flagged this file as malicious</span></div>`
         + (fr.threat_label ? `<div class="mb-2">Threat label: <span class="font-mono text-amber-300">${esc(fr.threat_label)}</span></div>` : "")
         + ((fr.engine_hits || []).length
@@ -333,7 +333,7 @@ function render(a, report) {
     let html = "";
     if (cert.present) {
       html += `<div><span class="text-slate-400">Subject:</span> <span class="text-slate-200 font-mono text-xs">${esc(cert.subject || "Not reported")}</span></div>`;
-      if (cert.validity_years != null) html += `<div><span class="text-slate-400">Validity:</span> ${cert.validity_years} yrs${cert.self_signed ? " · self-signed" : ""}</div>`;
+      if (cert.validity_years != null) html += `<div><span class="text-slate-400">Validity:</span> ${cert.validity_years} yrs${cert.self_signed ? ", self-signed" : ""}</div>`;
       if (cert.sha256) html += `<div><span class="text-slate-400">Cert SHA256:</span> <span class="font-mono text-xs">${short(cert.sha256)}</span></div>`;
     }
     (cert.flags || []).forEach(f =>
@@ -366,17 +366,17 @@ function renderAgent(agent) {
   }
   const statusColor = agent.status === "completed" ? "#67e8f9" : agent.status === "unavailable" ? "#fbbf24" : "#fca5a5";
   const hypotheses = (agent.hypotheses || []).map(h => `
-    <div class="rounded-lg bg-slate-900/50 p-3">
+    <div class="agent-hypothesis">
       <div class="flex gap-2 items-start"><span class="chip shrink-0" style="background:#164e63;color:#a5f3fc">${esc(h.confidence)}</span><span class="text-slate-200">${esc(h.claim)}</span></div>
       <div class="mt-2 text-xs text-slate-500">Evidence: ${(h.evidence_ids || []).map(esc).join(", ")}</div>
     </div>`).join("") || '<p class="text-slate-500">No grounded hypothesis was produced.</p>';
   const audit = (agent.audit || []).map(step => `
     <div class="flex justify-between gap-3 border-b border-slate-800 py-1.5">
       <span><span class="text-slate-500">${esc(step.step)}.</span> ${esc(step.action)}</span>
-      <span class="text-xs ${step.status === "completed" || step.status === "ok" ? "text-cyan-400" : step.status === "approval_required" ? "text-amber-400" : "text-rose-400"}">${esc(step.status)}${step.executed === false ? " · not executed" : ""}</span>
+      <span class="text-xs ${step.status === "completed" || step.status === "ok" ? "text-cyan-400" : step.status === "approval_required" ? "text-amber-400" : "text-rose-400"}">${esc(step.status)}${step.executed === false ? ", not executed" : ""}</span>
     </div>`).join("");
   const gaps = (agent.gaps || []).map(g => `<li>${esc(g)}</li>`).join("");
-  const review = agent.gemini_review ? `<div class="mt-3 text-xs text-slate-400">Gemini review: <span class="${agent.gemini_review.grounded ? "text-emerald-400" : "text-amber-400"}">${agent.gemini_review.grounded ? "grounded" : "issues found"}</span>${(agent.gemini_review.unsupported_claims || []).length ? ` · Unsupported: ${agent.gemini_review.unsupported_claims.map(esc).join("; ")}` : ""}</div>` : "";
+  const review = agent.gemini_review ? `<div class="mt-3 text-xs text-slate-400">Gemini review: <span class="${agent.gemini_review.grounded ? "text-emerald-400" : "text-amber-400"}">${agent.gemini_review.grounded ? "grounded" : "issues found"}</span>${(agent.gemini_review.unsupported_claims || []).length ? `. Unsupported: ${agent.gemini_review.unsupported_claims.map(esc).join("; ")}` : ""}</div>` : "";
   body.innerHTML = `
     <div class="flex flex-wrap gap-2 mb-3"><span class="chip" style="background:#1e293b;color:${statusColor}">${esc(agent.status)}</span><span class="chip" style="background:#1e293b;color:#cbd5e1">${esc(agent.provider || "Unavailable")} / ${esc(agent.model || "Unavailable")}</span><span class="chip" style="background:#1e293b;color:#cbd5e1">${esc(agent.steps_used || 0)} steps, ${esc(agent.duration_ms || 0)} ms</span></div>
     <div class="space-y-2">${hypotheses}</div>
@@ -516,7 +516,7 @@ function renderDynamic(d) {
     ? `<div><span class="text-slate-400">${label}:</span> <span class="text-slate-300 font-mono text-xs break-all">${arr.slice(0,15).map(esc).join(", ")}</span></div>` : "";
   const fr = d.frida || {};
   $("dyn-results").innerHTML =
-    `<div class="flex items-center gap-3 mb-3"><span class="text-2xl font-bold text-amber-400">${d.dynamic_score ?? 0}</span><span class="text-slate-400 text-sm">dynamic behaviour score · ran ${d.duration}s${d.use_frida ? " · Frida" : ""}${d.rooted ? " · root" : ""}${d.has_launcher === false ? " · no launcher icon" : ""}</span></div>`
+    `<div class="flex items-center gap-3 mb-3"><span class="text-2xl font-medium font-mono text-amber-400">${d.dynamic_score ?? 0}</span><span class="text-slate-400 text-sm">dynamic behaviour score, ran ${d.duration}s${d.use_frida ? ", Frida" : ""}${d.rooted ? ", root" : ""}${d.has_launcher === false ? ", no launcher icon" : ""}</span></div>`
     + ((d.activated && d.activated.length) ? `<div class="text-xs text-slate-400 mb-2">Triggered: ${d.activated.map(x=>`<span class="chip" style="background:#1e293b;color:#fcd34d">${esc(x)}</span>`).join(" ")}</div>` : "")
     + `<div class="grid md:grid-cols-2 gap-x-6 gap-y-1 text-sm">`
     + list("Granted permissions", d.granted_permissions)

@@ -20,35 +20,30 @@ def tag_with_id(source: str, element_id: str) -> str:
 
 
 class FrontendContractTests(unittest.TestCase):
-    def test_dashboard_uses_local_carbon_icon_system(self):
-        sprite_path = ROOT / "frontend" / "icons" / "carbon.svg"
-        notice_path = ROOT / "frontend" / "icons" / "README.md"
+    def test_dashboard_uses_local_tabler_icon_system(self):
+        stylesheet_path = ROOT / "frontend" / "vendor" / "tabler" / "tabler-icons.min.css"
+        font_path = ROOT / "frontend" / "vendor" / "tabler" / "fonts" / "tabler-icons.woff2"
+        notice_path = ROOT / "frontend" / "vendor" / "tabler" / "LICENSE.txt"
 
         self.assertNotIn("<path", HTML, "hand-authored icon paths should not live in page markup")
         self.assertNotIn("stroke-linecap", HTML)
-        self.assertGreaterEqual(HTML.count('class="carbon-icon'), 13)
-        self.assertTrue(sprite_path.exists(), "the local Carbon sprite is missing")
-        self.assertTrue(notice_path.exists(), "Carbon source and license notice is missing")
+        self.assertGreaterEqual(HTML.count('class="ti ti-'), 13)
+        self.assertIn('href="vendor/tabler/tabler-icons.min.css"', HTML)
+        self.assertTrue(stylesheet_path.exists(), "the local Tabler stylesheet is missing")
+        self.assertTrue(font_path.exists(), "the local Tabler icon font is missing")
+        self.assertTrue(notice_path.exists(), "the Tabler source and license notice is missing")
 
-        if sprite_path.exists():
-            sprite = sprite_path.read_text(encoding="utf-8")
-            for icon_id in (
-                "scan-alt",
-                "upload",
-                "document-pdf",
-                "download",
-                "machine-learning-model",
-                "search-advanced",
-                "rule",
-                "network-3",
-                "certificate",
-                "analytics",
-                "application-mobile",
-                "security-services",
-                "mobile",
-                "play-filled",
-            ):
-                self.assertIn(f'id="{icon_id}"', sprite)
+    def test_dashboard_self_hosts_its_interface_fonts(self):
+        for filename in (
+            "ibm-plex-sans-400.woff2",
+            "ibm-plex-sans-500.woff2",
+            "ibm-plex-sans-600.woff2",
+            "ibm-plex-mono-400.woff2",
+            "ibm-plex-mono-500.woff2",
+        ):
+            self.assertTrue((ROOT / "frontend" / "vendor" / "fonts" / filename).exists())
+        self.assertIn('font-family: "IBM Plex Sans"', HTML)
+        self.assertIn('font-family: "IBM Plex Mono"', HTML)
 
     def test_dropzone_is_keyboard_accessible(self):
         tag = tag_with_id(HTML, "dropzone")

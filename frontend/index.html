@@ -6,54 +6,51 @@
   <title>APK Fraud Analyzer</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="vendor/tabler/tabler-icons.min.css" />
   <style>
+    @font-face { font-family: "IBM Plex Sans"; src: url("vendor/fonts/ibm-plex-sans-400.woff2") format("woff2"); font-style: normal; font-weight: 400; font-display: swap; }
+    @font-face { font-family: "IBM Plex Sans"; src: url("vendor/fonts/ibm-plex-sans-500.woff2") format("woff2"); font-style: normal; font-weight: 500; font-display: swap; }
+    @font-face { font-family: "IBM Plex Sans"; src: url("vendor/fonts/ibm-plex-sans-600.woff2") format("woff2"); font-style: normal; font-weight: 600; font-display: swap; }
+    @font-face { font-family: "IBM Plex Mono"; src: url("vendor/fonts/ibm-plex-mono-400.woff2") format("woff2"); font-style: normal; font-weight: 400; font-display: swap; }
+    @font-face { font-family: "IBM Plex Mono"; src: url("vendor/fonts/ibm-plex-mono-500.woff2") format("woff2"); font-style: normal; font-weight: 500; font-display: swap; }
     :root {
       color-scheme: dark;
-      --page: #080d19;
-      --panel: rgba(17, 25, 43, 0.78);
-      --panel-strong: rgba(22, 32, 52, 0.94);
-      --line: rgba(148, 163, 184, 0.14);
-      --line-strong: rgba(103, 232, 249, 0.3);
-      --cyan: #22d3ee;
-      --cyan-strong: #0891b2;
-      --cyan-deep: #0e7490;
-      --ink: #f8fafc;
-      --muted: #94a3b8;
+      --page: #080b10;
+      --panel: #0f141c;
+      --panel-strong: #151b24;
+      --line: #28313d;
+      --line-strong: #3f4b5b;
+      --accent: #4cc7da;
+      --accent-hover: #78d6e4;
+      --ink: #eef2f6;
+      --muted: #98a3b3;
+      --subtle: #697586;
+      --radius: 4px;
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body {
-      background:
-        radial-gradient(circle at 12% -10%, rgba(8, 145, 178, 0.14), transparent 34rem),
-        radial-gradient(circle at 100% 28%, rgba(14, 116, 144, 0.08), transparent 30rem),
-        var(--page);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--page);
+      font-family: "IBM Plex Sans", "Segoe UI Variable", "Segoe UI", sans-serif;
+      font-feature-settings: "ss01" 1, "kern" 1;
+      letter-spacing: -.008em;
     }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      opacity: 0.22;
-      background-image: linear-gradient(rgba(148,163,184,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.04) 1px, transparent 1px);
-      background-size: 32px 32px;
-      mask-image: linear-gradient(to bottom, black, transparent 68%);
-    }
+    code, .font-mono { font-family: "IBM Plex Mono", ui-monospace, monospace !important; letter-spacing: -.02em; }
     .glass {
       background: var(--panel);
       border: 1px solid var(--line);
-      box-shadow: 0 22px 55px rgba(2, 6, 23, 0.18), inset 0 1px 0 rgba(255,255,255,0.025);
-      backdrop-filter: blur(16px);
+      border-radius: var(--radius) !important;
+      box-shadow: none;
     }
-    .glass:hover { border-color: rgba(148, 163, 184, 0.2); }
+    .glass:hover { border-color: var(--line-strong); }
     .gauge-wrap { position: relative; width: 180px; height: 180px; }
     .gauge-text { position: absolute; inset: 0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-thumb { background: #29304d; border-radius: 4px; }
-    .chip { display:inline-block; padding:3px 10px; border-radius:9999px; font-size:11px; font-weight:650; letter-spacing:.01em; }
-    .carbon-icon { display: inline-block; width: 1em; height: 1em; flex: none; fill: currentColor; vertical-align: middle; }
-    .eyebrow { color: #67e8f9; font-size: 11px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
-    .skip-link { position: fixed; z-index: 50; left: 1rem; top: -5rem; padding: .65rem 1rem; border-radius: .65rem; color: #06212b; background: #67e8f9; font-weight: 700; transition: top .15s ease; }
+    ::-webkit-scrollbar-thumb { background: #303b49; border-radius: 0; }
+    .chip { display:inline-block; padding:3px 8px; border-radius:2px; font-size:11px; font-weight:600; letter-spacing:.01em; }
+    .ti { flex: none; font-size: 1.15em; line-height: 1; }
+    .eyebrow { color: var(--accent); font-size: 11px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase; }
+    .skip-link { position: fixed; z-index: 50; left: 1rem; top: -5rem; padding: .65rem 1rem; border-radius: var(--radius); color: #071116; background: var(--accent); font-weight: 600; transition: top .15s ease; }
     .skip-link:focus { top: 1rem; }
     .btn-primary, .btn-secondary, .btn-warning {
       min-height: 42px;
@@ -62,44 +59,47 @@
       justify-content: center;
       gap: .5rem;
       border: 1px solid transparent;
-      border-radius: 11px;
-      padding: .65rem 1rem;
-      font-size: .875rem;
-      font-weight: 700;
+      border-radius: var(--radius);
+      padding: .68rem 1rem;
+      font-size: .82rem;
+      font-weight: 600;
       line-height: 1.2;
-      transition: transform .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease;
+      letter-spacing: .005em;
+      white-space: nowrap;
+      transition: transform .12s ease, background-color .12s ease, border-color .12s ease, color .12s ease;
     }
-    .btn-primary { color: #04151c; background: #67e8f9; border-color: #a5f3fc; box-shadow: 0 8px 24px rgba(34,211,238,.14); }
-    .btn-primary:hover:not(:disabled) { background: #a5f3fc; box-shadow: 0 10px 30px rgba(34,211,238,.22); transform: translateY(-1px); }
-    .btn-secondary { color: #e2e8f0; background: rgba(30,41,59,.76); border-color: rgba(148,163,184,.18); }
-    .btn-secondary:hover:not(:disabled) { color: white; background: #334155; border-color: rgba(148,163,184,.34); transform: translateY(-1px); }
-    .btn-warning { color: #1c1202; background: #fbbf24; border-color: #fde68a; box-shadow: 0 8px 24px rgba(245,158,11,.12); }
-    .btn-warning:hover:not(:disabled) { background: #fcd34d; transform: translateY(-1px); }
-    .btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled), .btn-warning:active:not(:disabled) { transform: translateY(1px) scale(.99); }
-    .btn-primary:disabled, .btn-secondary:disabled, .btn-warning:disabled { color: #64748b; background: #1e293b; border-color: rgba(148,163,184,.08); box-shadow: none; cursor: not-allowed; }
+    .btn-primary { color: #071116; background: var(--accent); border-color: var(--accent); }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn-secondary { color: #d9e0e8; background: #18202b; border-color: #354151; }
+    .btn-secondary:hover:not(:disabled) { color: #ffffff; background: #222d3a; border-color: #566477; }
+    .btn-warning { color: #171100; background: #f1c21b; border-color: #f1c21b; }
+    .btn-warning:hover:not(:disabled) { background: #f8d44c; border-color: #f8d44c; }
+    .btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled), .btn-warning:active:not(:disabled) { transform: translateY(1px); }
+    .btn-primary:disabled, .btn-secondary:disabled, .btn-warning:disabled { color: #697586; background: #171d26; border-color: #28313d; cursor: not-allowed; }
     .btn-primary:focus-visible, .btn-secondary:focus-visible, .btn-warning:focus-visible,
     select:focus-visible, input:focus-visible, [role="button"]:focus-visible, a:focus-visible {
-      outline: 3px solid rgba(103,232,249,.35);
-      outline-offset: 3px;
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
     .btn-busy { cursor: wait !important; }
     .btn-busy::before { content: ""; width: 14px; height: 14px; flex: none; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
-    .control { min-height: 40px; border: 1px solid rgba(148,163,184,.17); border-radius: 10px; background: rgba(15,23,42,.88); padding: .45rem .7rem; color: #e2e8f0; }
-    .dropzone { position: relative; overflow: hidden; border: 1px dashed rgba(103,232,249,.3); background: rgba(8,17,31,.56); transition: border-color .18s ease, background-color .18s ease, transform .18s ease; }
-    .dropzone:hover, .dropzone.is-dragging { border-color: #67e8f9; background: rgba(8,145,178,.08); }
+    .control { min-height: 40px; border: 1px solid #354151; border-radius: var(--radius); background: #111821; padding: .45rem .7rem; color: #e2e8f0; }
+    .dropzone { position: relative; overflow: hidden; border: 1px dashed #48586a; border-radius: var(--radius) !important; background: #0b1017; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
+    .dropzone:hover, .dropzone.is-dragging { border-color: var(--accent); background: #0d171e; }
     .dropzone.is-dragging { transform: scale(1.005); }
     .dropzone.has-file { border-style: solid; border-color: rgba(52,211,153,.42); background: rgba(6,78,59,.09); }
-    .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: #22d3ee; box-shadow: 0 0 0 4px rgba(34,211,238,.09); }
     .workflow-step { position: relative; padding-left: 1.2rem; }
-    .workflow-step::before { content: attr(data-step); position: absolute; left: 0; top: .05rem; color: #67e8f9; font: 700 10px/1 ui-monospace, SFMono-Regular, monospace; }
+    .workflow-step::before { content: attr(data-step); position: absolute; left: 0; top: .05rem; color: var(--accent); font: 500 10px/1 "IBM Plex Mono", monospace; }
     .history-row { border: 1px solid transparent; }
+    .history-row { border-radius: 2px !important; }
     .history-row:hover { border-color: rgba(148,163,184,.12); background: rgba(255,255,255,.035); }
+    .agent-hypothesis { border: 1px solid #25303d; border-radius: 2px; background: #111720; padding: .8rem; }
     .result-shell {
       overflow: hidden;
-      border: 1px solid rgba(148,163,184,.18);
-      border-radius: 16px;
-      background: #0d1424;
-      box-shadow: 0 28px 72px rgba(2,6,23,.3);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: none;
     }
     .case-header {
       display: flex;
@@ -107,50 +107,51 @@
       justify-content: space-between;
       gap: 1.25rem;
       padding: 1.15rem 1.35rem;
-      border-bottom: 1px solid rgba(148,163,184,.13);
-      background: rgba(15,23,42,.72);
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-strong);
     }
-    .case-label { color: #67e8f9; font: 700 11px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
-    .case-filename { margin-top: .35rem; color: #f8fafc; font-size: 1.05rem; font-weight: 720; overflow-wrap: anywhere; }
-    .case-package { margin-top: .2rem; color: #64748b; font: 500 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+    .case-label { color: var(--accent); font-size: 11px; line-height: 1.2; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+    .case-filename { margin-top: .35rem; color: var(--ink); font-family: "IBM Plex Mono", monospace; font-size: .91rem; font-weight: 500; letter-spacing: -.025em; overflow-wrap: anywhere; }
+    .case-package { margin-top: .3rem; color: var(--subtle); font: 400 12px/1.4 "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
     .verdict-grid { display: grid; grid-template-columns: minmax(250px,.78fr) minmax(0,2.22fr); }
-    .score-column { display: grid; place-items: center; padding: 1.4rem; border-right: 1px solid rgba(148,163,184,.13); }
+    .score-column { display: grid; place-items: center; padding: 1.4rem; border-right: 1px solid var(--line); }
     .sample-column { min-width: 0; padding: 1.35rem; }
     .severity-scale { width: 100%; max-width: 270px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 4px; margin-top: 1rem; }
-    .severity-level { padding: .45rem .2rem; border: 1px solid rgba(148,163,184,.12); border-radius: 7px; color: #64748b; background: #10192a; text-align: center; font: 700 9px/1.25 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; }
+    .severity-level { padding: .45rem .2rem; border: 1px solid var(--line); border-radius: 2px; color: var(--subtle); background: #111720; text-align: center; font: 500 9px/1.25 "IBM Plex Mono", monospace; text-transform: uppercase; }
     .severity-scale[data-active="low"] .severity-level[data-level="low"] { color: #bbf7d0; border-color: #22c55e; background: rgba(34,197,94,.12); }
     .severity-scale[data-active="medium"] .severity-level[data-level="medium"] { color: #fef08a; border-color: #eab308; background: rgba(234,179,8,.12); }
     .severity-scale[data-active="high"] .severity-level[data-level="high"] { color: #fed7aa; border-color: #f97316; background: rgba(249,115,22,.12); }
     .severity-scale[data-active="critical"] .severity-level[data-level="critical"] { color: #fecaca; border-color: #ef4444; background: rgba(239,68,68,.12); }
-    .metric-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin-top: 1.15rem; border: 1px solid rgba(148,163,184,.12); border-radius: 12px; overflow: hidden; }
-    .metric { min-width: 0; padding: .8rem .9rem; background: rgba(15,23,42,.58); }
-    .metric + .metric { border-left: 1px solid rgba(148,163,184,.12); }
-    .metric-value { display: block; color: #f8fafc; font: 720 1.15rem/1.15 ui-monospace, SFMono-Regular, Consolas, monospace; }
-    .metric-label { display: block; margin-top: .2rem; color: #64748b; font-size: 10px; line-height: 1.25; text-transform: uppercase; letter-spacing: .06em; }
-    .evidence-nav { position: sticky; top: .75rem; z-index: 20; display: flex; gap: .35rem; padding: .4rem; overflow-x: auto; border: 1px solid rgba(148,163,184,.14); border-radius: 12px; background: rgba(8,13,25,.94); backdrop-filter: blur(14px); }
-    .evidence-nav a { flex: none; padding: .55rem .8rem; border-radius: 8px; color: #94a3b8; font-size: .75rem; font-weight: 650; white-space: nowrap; }
-    .evidence-nav a:hover, .evidence-nav a:focus-visible { color: #ecfeff; background: rgba(34,211,238,.09); }
+    .metric-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin-top: 1.15rem; border: 1px solid var(--line); border-radius: 0; overflow: hidden; }
+    .metric { min-width: 0; padding: .8rem .9rem; background: #111720; }
+    .metric + .metric { border-left: 1px solid var(--line); }
+    .metric-value { display: block; color: var(--ink); font: 500 1.15rem/1.15 "IBM Plex Mono", monospace; }
+    .metric-label { display: block; margin-top: .28rem; color: var(--subtle); font-size: 10px; line-height: 1.25; text-transform: uppercase; letter-spacing: .07em; }
+    .evidence-nav { position: sticky; top: .75rem; z-index: 20; display: flex; gap: 0; padding: 0; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(8,11,16,.96); }
+    .evidence-nav a { flex: none; padding: .68rem .9rem; border-right: 1px solid var(--line); color: var(--muted); font-size: .76rem; font-weight: 500; white-space: nowrap; }
+    .evidence-nav a:hover, .evidence-nav a:focus-visible { color: #eefcff; background: #142029; }
     .workspace-section { scroll-margin-top: 5rem; }
-    .section-intro { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
-    .section-intro h2 { color: #f8fafc; font-size: 1rem; font-weight: 720; }
-    .section-intro p { color: #64748b; font-size: .75rem; }
-    .evidence-panel { min-width: 0; border: 1px solid rgba(148,163,184,.14); border-radius: 14px; background: #0d1424; }
-    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .9rem 1rem; border-bottom: 1px solid rgba(148,163,184,.11); }
-    .panel-title { display: flex; align-items: center; gap: .5rem; color: #dbeafe; font-size: .75rem; font-weight: 750; letter-spacing: .045em; text-transform: uppercase; }
+    .section-intro { display: block; margin-bottom: .8rem; }
+    .section-intro h2 { color: var(--ink); font-size: 1.03rem; font-weight: 600; letter-spacing: -.015em; }
+    .section-intro p { margin-top: .18rem; color: var(--subtle); font-size: .76rem; }
+    .evidence-panel { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .82rem 1rem; border-bottom: 1px solid var(--line); background: #121923; }
+    .panel-title { display: flex; align-items: center; gap: .5rem; color: #dce3eb; font-size: .79rem; font-weight: 600; letter-spacing: .005em; text-transform: none; }
     .panel-body { padding: 1rem; }
-    .finding-list { display: grid; gap: .5rem; }
-    .finding-row { display: grid; grid-template-columns: 48px minmax(0,1fr); gap: .75rem; align-items: start; padding: .72rem; border-radius: 10px; background: #10192a; }
-    .finding-score { padding-top: .08rem; color: #f8fafc; font: 750 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
-    .finding-name { color: #e2e8f0; font-size: .78rem; font-weight: 680; overflow-wrap: anywhere; }
-    .finding-detail { margin-top: .18rem; color: #718096; font-size: .7rem; line-height: 1.45; overflow-wrap: anywhere; }
+    .finding-list { display: block; padding: .25rem 1rem; }
+    .finding-row { display: grid; grid-template-columns: 48px minmax(0,1fr); gap: .8rem; align-items: start; padding: .82rem 0; border-bottom: 1px solid #202936; border-radius: 0; background: transparent; }
+    .finding-row:last-child { border-bottom: 0; }
+    .finding-score { padding-top: .06rem; color: #ff7b86; font: 500 11px/1.35 "IBM Plex Mono", monospace; text-align: right; }
+    .finding-name { color: #e3e8ee; font-size: .78rem; font-weight: 500; overflow-wrap: anywhere; }
+    .finding-detail { margin-top: .2rem; color: #7f8b9c; font-size: .71rem; line-height: 1.5; overflow-wrap: anywhere; }
     .ioc-grid { display: grid; gap: .6rem; }
-    .ioc-group { display: grid; grid-template-columns: 88px minmax(0,1fr); gap: .65rem; align-items: start; padding: .7rem .75rem; border-radius: 10px; background: #10192a; }
-    .ioc-label { color: #64748b; font-size: .65rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
-    .ioc-values { color: #cbd5e1; font: 500 .7rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+    .ioc-group { display: grid; grid-template-columns: 88px minmax(0,1fr); gap: .75rem; align-items: start; padding: .72rem .8rem; border-left: 2px solid #354151; border-radius: 0; background: #111720; }
+    .ioc-label { color: #7f8b9c; font-size: .65rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+    .ioc-values { color: #cbd5df; font: 400 .7rem/1.55 "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
     .recommendation-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .55rem; }
-    .recommendation-item { position: relative; min-height: 64px; padding: .8rem .85rem .8rem 2.45rem; border-radius: 10px; background: #10192a; color: #cbd5e1; line-height: 1.45; }
-    .recommendation-item::before { content: attr(data-index); position: absolute; left: .85rem; top: .85rem; color: #67e8f9; font: 750 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
-    .sandbox-panel { border-color: rgba(245,158,11,.28); background: linear-gradient(180deg,rgba(120,53,15,.09),#0d1424 52%); }
+    .recommendation-item { position: relative; min-height: 62px; padding: .82rem .9rem .82rem 2.6rem; border: 1px solid #25303d; border-radius: 2px; background: #111720; color: #cbd5df; line-height: 1.45; }
+    .recommendation-item::before { content: attr(data-index); position: absolute; left: .9rem; top: .92rem; color: var(--accent); font: 500 10px/1 "IBM Plex Mono", monospace; }
+    .sandbox-panel { border-color: #665416; background: #11140f; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 640px) {
       body { overflow-x: hidden; }
@@ -160,7 +161,6 @@
       .dropzone { padding-left: 1rem; padding-right: 1rem; }
       .dropzone p { overflow-wrap: anywhere; }
       .btn-mobile-full { width: 100%; }
-      .glass { backdrop-filter: blur(10px); }
       .case-header { flex-direction: column; }
       .verdict-grid { grid-template-columns: 1fr; }
       .score-column { border-right: 0; border-bottom: 1px solid rgba(148,163,184,.13); }
@@ -184,9 +184,9 @@
     <!-- Header -->
     <header class="flex items-start sm:items-center justify-between gap-5 mb-7 flex-col sm:flex-row">
       <div class="w-full min-w-0 sm:w-auto">
-        <div class="eyebrow mb-2 flex items-center gap-2"><span class="status-dot"></span> Android threat triage</div>
-        <h1 class="text-xl sm:text-2xl font-bold text-white flex items-center gap-2 min-w-0">
-          <svg class="carbon-icon w-6 h-6 text-slate-200" aria-hidden="true"><use href="icons/carbon.svg#scan-alt"></use></svg>
+        <div class="eyebrow mb-2">Android threat triage</div>
+        <h1 class="text-xl sm:text-2xl font-semibold text-white flex items-center gap-2 min-w-0">
+          <i class="ti ti-shield-search text-cyan-300 text-[1.45rem]" aria-hidden="true"></i>
           APK Fraud Analyzer
         </h1>
         <p class="text-sm text-slate-400 mt-1 max-w-2xl">Explainable static analysis, evidence correlation, and bounded AI investigation for suspicious Android packages.</p>
@@ -210,7 +210,7 @@
       <div id="dropzone" class="dropzone rounded-xl p-7 sm:p-10 text-center cursor-pointer" role="button" tabindex="0" aria-describedby="upload-help file-name">
         <input type="file" id="file-input" accept=".apk" class="hidden" />
         <div class="w-10 h-10 mx-auto mb-4 grid place-items-center text-slate-300">
-          <svg class="carbon-icon w-8 h-8" aria-hidden="true"><use href="icons/carbon.svg#upload"></use></svg>
+          <i class="ti ti-upload text-[2rem]" aria-hidden="true"></i>
         </div>
         <p class="text-base sm:text-lg font-semibold text-white">Drop a suspicious <code>.apk</code> here or click to browse</p>
         <p id="upload-help" class="text-sm text-slate-400 mt-1">Static analysis only. The APK is hashed and inspected, never executed on this host.</p>
@@ -250,15 +250,15 @@
           </div>
           <div class="flex flex-wrap gap-2">
             <button id="pdf-btn" class="btn-secondary">
-              <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#document-pdf"></use></svg>
+              <i class="ti ti-file-type-pdf" aria-hidden="true"></i>
               PDF report
             </button>
             <button id="ioc-csv-btn" class="btn-secondary">
-              <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#download"></use></svg>
+              <i class="ti ti-download" aria-hidden="true"></i>
               IOC CSV
             </button>
             <button id="ioc-json-btn" class="btn-secondary">
-              <svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#download"></use></svg>
+              <i class="ti ti-download" aria-hidden="true"></i>
               IOC JSON
             </button>
           </div>
@@ -268,7 +268,7 @@
             <div class="gauge-wrap">
               <canvas id="gauge" width="180" height="180"></canvas>
               <div class="gauge-text">
-                <span id="score-num" class="text-4xl font-bold text-white">0</span>
+                <span id="score-num" class="text-4xl font-medium font-mono text-white">0</span>
                 <span class="text-xs text-slate-400">out of 100</span>
                 <span id="severity-chip" class="chip mt-2">Unknown</span>
               </div>
@@ -308,7 +308,7 @@
         <div class="section-intro"><h2>Assessment</h2><p>Human-readable triage plus a bounded evidence review.</p></div>
         <div class="grid lg:grid-cols-5 gap-4">
           <article class="evidence-panel lg:col-span-2">
-            <div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#machine-learning-model"></use></svg>Threat explanation</h3></div>
+            <div class="panel-head"><h3 class="panel-title"><i class="ti ti-file-analytics" aria-hidden="true"></i>Threat explanation</h3></div>
             <div class="panel-body">
               <p id="exec-summary" class="text-slate-200 leading-relaxed"></p>
               <p id="tech-summary" class="text-slate-500 text-xs leading-relaxed mt-3"></p>
@@ -318,7 +318,7 @@
           <article id="agent-card" class="evidence-panel lg:col-span-3">
             <div class="panel-head flex-wrap">
               <div>
-                <h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#search-advanced"></use></svg>Agentic evidence investigation</h3>
+                <h3 class="panel-title"><i class="ti ti-sparkles" aria-hidden="true"></i>Agentic evidence investigation</h3>
                 <p class="text-xs text-slate-500 mt-1">Allowlisted evidence tools only. The agent cannot execute the APK or alter its score.</p>
               </div>
               <button id="agent-run-btn" class="btn-primary" disabled>Run AI investigation</button>
@@ -341,12 +341,12 @@
       <section id="threat-intel" class="workspace-section">
         <div class="section-intro"><h2>Threat mapping</h2><p>Signatures, ATT&amp;CK techniques, identity, and optional intelligence layers.</p></div>
         <div class="grid lg:grid-cols-2 gap-4">
-          <article id="yara-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#rule"></use></svg>YARA signature matches</h3></div><div id="yara-body" class="panel-body finding-list"></div></article>
-          <article id="mitre-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#network-3"></use></svg>MITRE ATT&amp;CK Mobile</h3></div><div id="mitre-body" class="panel-body flex flex-wrap gap-2"></div></article>
-          <article id="cert-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#certificate"></use></svg>Certificate and attack surface</h3></div><div id="cert-body" class="panel-body text-sm space-y-2"></div></article>
-          <article id="ml-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#analytics"></use></svg>ML classifier verdict</h3></div><div id="ml-body" class="panel-body text-sm"></div></article>
-          <article id="apkid-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#application-mobile"></use></svg>APKiD fingerprint</h3></div><div id="apkid-body" class="panel-body text-sm space-y-2"></div></article>
-          <article id="vt-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#security-services"></use></svg>VirusTotal corroboration</h3></div><div id="vt-body" class="panel-body text-sm"></div></article>
+          <article id="yara-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><i class="ti ti-shield-code" aria-hidden="true"></i>YARA signature matches</h3></div><div id="yara-body" class="panel-body finding-list"></div></article>
+          <article id="mitre-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><i class="ti ti-route" aria-hidden="true"></i>MITRE ATT&amp;CK Mobile</h3></div><div id="mitre-body" class="panel-body flex flex-wrap gap-2"></div></article>
+          <article id="cert-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><i class="ti ti-certificate" aria-hidden="true"></i>Certificate and attack surface</h3></div><div id="cert-body" class="panel-body text-sm space-y-2"></div></article>
+          <article id="ml-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><i class="ti ti-chart-histogram" aria-hidden="true"></i>ML classifier verdict</h3></div><div id="ml-body" class="panel-body text-sm"></div></article>
+          <article id="apkid-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><i class="ti ti-device-mobile-code" aria-hidden="true"></i>APKiD fingerprint</h3></div><div id="apkid-body" class="panel-body text-sm space-y-2"></div></article>
+          <article id="vt-card" class="evidence-panel hidden"><div class="panel-head"><h3 class="panel-title"><i class="ti ti-shield-search" aria-hidden="true"></i>VirusTotal corroboration</h3></div><div id="vt-body" class="panel-body text-sm"></div></article>
         </div>
       </section>
 
@@ -355,7 +355,7 @@
         <article class="evidence-panel sandbox-panel">
           <div class="panel-head flex-wrap">
             <div>
-              <h3 class="panel-title text-amber-200"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#mobile"></use></svg>Dynamic analysis in an emulator</h3>
+              <h3 class="panel-title text-amber-200"><i class="ti ti-device-mobile" aria-hidden="true"></i>Dynamic analysis in an emulator</h3>
               <p class="text-xs text-slate-500 mt-1">Installs and runs the APK only in the selected isolated Android virtual device.</p>
             </div>
             <span id="emu-status" class="text-xs"></span>
@@ -365,7 +365,7 @@
               <label class="text-xs text-slate-400">Device<br><select id="dyn-device" class="control mt-1 text-sm min-w-[12rem] max-w-[16rem]"></select></label>
               <label class="text-xs text-slate-400">Observation window<br><select id="dyn-duration" class="control mt-1 text-sm"><option value="10">10 seconds</option><option value="15" selected>15 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option></select></label>
               <label class="control text-sm text-slate-300 flex items-center gap-2"><input type="checkbox" id="dyn-frida" class="accent-cyan-500">Frida hooks</label>
-              <button id="dyn-run-btn" class="btn-warning"><svg class="carbon-icon w-4 h-4" aria-hidden="true"><use href="icons/carbon.svg#play-filled"></use></svg>Run in emulator</button>
+              <button id="dyn-run-btn" class="btn-warning"><i class="ti ti-player-play" aria-hidden="true"></i>Run in emulator</button>
             </div>
             <div id="dyn-loading" class="hidden mt-4 text-sm text-slate-400" role="status" aria-live="polite"><span class="inline-block w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin align-middle"></span><span id="dyn-loading-text" class="align-middle ml-2">Running in emulator…</span></div>
             <div id="dyn-results" class="hidden mt-4"></div>
@@ -380,6 +380,6 @@
     </section>
   </main>
 
-  <script src="app.js?v=analyst-workspace-4"></script>
+  <script src="app.js?v=analyst-workspace-5"></script>
 </body>
 </html>

@@ -11,12 +11,10 @@ investigation report → PDF export. Built for banking-fraud / SOC first-level t
 ## Dashboard
 
 The analyst console keeps upload, deterministic triage, evidence review, optional AI,
-and emulator-only runtime analysis visibly separated. It uses the IBM Carbon icon
-language and does not need a frontend build step.
+and emulator-only runtime analysis visibly separated. It uses self-hosted IBM Plex
+type and the official Tabler outline icon family, with no frontend build step.
 
-| Upload workspace | Compact responsive layout |
-|---|---|
-| ![APK upload workspace](docs/images/dashboard-desktop.png) | ![Compact APK upload workspace](docs/images/dashboard-compact.png) |
+![APK upload workspace](docs/images/dashboard-desktop.png)
 
 ### Real CIC MalDroid banking analysis
 
