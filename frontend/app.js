@@ -114,6 +114,61 @@ async function loadSettings() {
   return data;
 }
 
+function renderComponents(data) {
+  const list = $("component-list");
+  if (!list) return;
+  const components = data.components || [];
+  list.innerHTML = components.map(component => {
+    const state = component.installed ? '<span class="chip chip-success">Installed</span>'
+      : component.install_available ? `<button class="btn-secondary component-action" type="button" data-component-install="${esc(component.id)}"><i class="ti ti-download" aria-hidden="true"></i>${esc(component.action_label)}</button>`
+      : `<button class="btn-secondary component-action" type="button" disabled title="${esc(component.unavailable_reason)}">Unavailable</button>`;
+    return `<div class="component-row" data-component-id="${esc(component.id)}">
+      <div><div class="component-name">${esc(component.name)}</div>
+      <div class="component-meta">${esc(component.description)} Download: ${esc(component.download_size)}. Source: <a class="component-source" href="${esc(safeHttpUrl(component.source_url))}" target="_blank" rel="noopener noreferrer">${esc(component.source_name)}</a>${component.unavailable_reason ? `. ${esc(component.unavailable_reason)}.` : ""}</div></div>
+      <div>${state}</div></div>`;
+  }).join("") || '<p class="p-3 text-xs text-slate-500">No optional components are available.</p>';
+}
+
+async function loadComponents() {
+  const response = await fetch(`${API}/api/components`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || "Could not load optional components");
+  renderComponents(data);
+  return data;
+}
+
+async function pollComponentJob(jobId, button) {
+  for (;;) {
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const response = await fetch(`${API}/api/components/jobs/${encodeURIComponent(jobId)}`);
+    const job = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(job.detail || "Could not read download status");
+    setSettingsStatus(job.message || "Download is running...");
+    if (job.status === "completed") return job;
+    if (job.status === "failed") throw new Error(job.message || "Download failed");
+  }
+}
+
+$("component-list")?.addEventListener("click", async event => {
+  const button = event.target.closest("[data-component-install]");
+  if (!button) return;
+  const componentId = button.dataset.componentInstall;
+  setButtonBusy(button, true, "Starting...");
+  setSettingsStatus("Starting optional component download...");
+  try {
+    const response = await fetch(`${API}/api/components/${encodeURIComponent(componentId)}/install`, {method: "POST"});
+    const job = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(job.detail || "Could not start download");
+    if (!job.already_installed) await pollComponentJob(job.id, button);
+    await Promise.all([loadComponents(), loadSettings(), refreshHealth()]);
+    setSettingsStatus("Optional component is installed and ready.", "success");
+  } catch (error) {
+    setSettingsStatus(error.message, "danger");
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
 function collectSettings() {
   const data = {
     external_api_enabled: $("setting-external-enabled").checked,
@@ -158,7 +213,7 @@ $("settings-open")?.addEventListener("click", async () => {
   dialog.showModal();
   setSettingsStatus("Loading settings...");
   try {
-    await loadSettings();
+    await Promise.all([loadSettings(), loadComponents()]);
     setSettingsStatus("Settings are stored locally on this computer.");
   } catch (error) {
     setSettingsStatus(error.message, "danger");

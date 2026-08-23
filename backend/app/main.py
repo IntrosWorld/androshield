@@ -27,7 +27,7 @@ from .intel import virustotal, apkid_scan
 from .ml import classifier as ml_classifier
 from .dynamic import sandbox as dyn_sandbox, frida_runner
 from .agent import orchestrator as agent_orchestrator
-from . import db, report as report_pdf, runtime_settings
+from . import db, optional_components, report as report_pdf, runtime_settings
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
 UPLOAD_CHUNK_BYTES = 1024 * 1024
@@ -145,6 +145,30 @@ def import_settings_model(request: Request, payload: dict = Body(...)):
         )
     except runtime_settings.SettingsError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/api/components")
+def get_components(request: Request):
+    _require_loopback(request)
+    return optional_components.component_catalog()
+
+
+@app.post("/api/components/{component_id}/install")
+def install_component(component_id: str, request: Request):
+    _require_loopback(request)
+    try:
+        return optional_components.start_install(component_id)
+    except optional_components.ComponentError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/api/components/jobs/{job_id}")
+def component_job(job_id: str, request: Request):
+    _require_loopback(request)
+    try:
+        return optional_components.get_job(job_id)
+    except optional_components.ComponentError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @app.get("/api/agent/health")

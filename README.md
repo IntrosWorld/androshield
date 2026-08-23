@@ -169,6 +169,14 @@ credentials, runtime budgets, the Ollama endpoint and model, and local GGUF impo
 Settings are persisted in the local SQLite database and the settings API is restricted
 to loopback clients. Secret values are never returned to the browser after saving.
 
+Large runtime features are optional downloads rather than part of the base package.
+The same Settings dialog can pull either recommended Qwen model from Ollama, install
+Google's Android emulator/API 35 sandbox files when Android Command-line Tools are
+present, and cache the matching `frida-server` from official Frida GitHub releases.
+Each entry shows its approximate size, installed state, and upstream source. Downloads
+continue in the backend if the browser or Settings dialog is closed. CIC, AndroZoo, and
+Drebin research datasets are deliberately excluded from end-user downloads.
+
 With automatic mode off, analyze and save an APK first, then use the dashboard's
 **Run AI Investigation** button or `POST /api/agent/investigate/{sample_id}`. Provider
 status is available from `GET /api/agent/health`. CPU-only inference may take several

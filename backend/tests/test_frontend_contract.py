@@ -106,6 +106,15 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('type="password"', HTML)
         self.assertIn('if (geminiKey) data.gemini_api_key = geminiKey', JS)
 
+    def test_optional_components_are_explicit_and_source_attributed(self):
+        tag_with_id(HTML, "component-list")
+        self.assertIn("Optional feature downloads", HTML)
+        self.assertIn("official upstream source", HTML)
+        self.assertIn("Malware research datasets are never included", HTML)
+        self.assertIn('fetch(`${API}/api/components`', JS)
+        self.assertIn("data-component-install", JS)
+        self.assertIn("pollComponentJob", JS)
+
     def test_busy_helper_preserves_labels_and_exposes_state(self):
         self.assertIn("function setButtonBusy(", JS)
         self.assertIn('button.setAttribute("aria-busy", String(busy))', JS)

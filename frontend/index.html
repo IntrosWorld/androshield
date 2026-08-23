@@ -290,6 +290,13 @@
     .settings-status[data-tone="success"] { color: var(--chip-success-fg); }
     .settings-status[data-tone="danger"] { color: var(--danger); }
     .secret-state { color: var(--chip-success-fg); }
+    .component-list { margin-top: 1rem; border: 1px solid var(--line); }
+    .component-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 1rem; align-items: center; padding: .85rem; background: var(--surface-muted); }
+    .component-row + .component-row { border-top: 1px solid var(--line); }
+    .component-name { color: var(--title); font-size: .76rem; font-weight: 650; }
+    .component-meta { margin-top: .18rem; color: var(--subtle); font-size: .66rem; line-height: 1.45; }
+    .component-source { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .component-action { min-width: 150px; min-height: 36px; padding: .5rem .7rem; font-size: .7rem; }
     html[data-theme="light"] .text-white,
     html[data-theme="light"] .text-slate-200 { color: #253241 !important; }
     html[data-theme="light"] .text-slate-300 { color: #3e4b5b !important; }
@@ -335,6 +342,8 @@
       .settings-actions { align-items: stretch; flex-direction: column; }
       .settings-actions > div { width: 100%; }
       .settings-actions button { flex: 1; }
+      .component-row { grid-template-columns: 1fr; }
+      .component-action { width: 100%; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
@@ -612,6 +621,15 @@
             <div class="field"><label for="setting-gemini-key">Gemini API key <span id="gemini-key-state" class="secret-state"></span></label><input id="setting-gemini-key" class="control" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved key" /><p class="field-help"><label><input id="clear-gemini-key" type="checkbox" /> Clear saved key</label></p></div>
             <div class="field"><label for="setting-vt-key">VirusTotal API key <span id="vt-key-state" class="secret-state"></span></label><input id="setting-vt-key" class="control" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved key" /><p class="field-help"><label><input id="clear-vt-key" type="checkbox" /> Clear saved key</label></p></div>
           </div>
+        </section>
+
+        <section class="settings-section" aria-labelledby="settings-downloads-title">
+          <h3 id="settings-downloads-title">Optional feature downloads</h3>
+          <p>Install large capabilities only when needed. Files come from their official upstream source.</p>
+          <div id="component-list" class="component-list" aria-live="polite">
+            <p class="p-3 text-xs text-slate-500">Loading optional components...</p>
+          </div>
+          <p class="field-help">Malware research datasets are never included in the application or downloaded for end users.</p>
         </section>
 
         <section class="settings-section" aria-labelledby="settings-model-title">
