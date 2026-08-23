@@ -8,6 +8,30 @@ investigation report → PDF export. Built for banking-fraud / SOC first-level t
 > Runtime analysis is a separate, explicit `/api/dynamic` action that targets an attached
 > isolated emulator only.
 
+## Dashboard
+
+![APK Fraud Analyzer desktop dashboard](docs/images/dashboard-desktop.png)
+
+The dashboard keeps the investigation flow explicit: upload an APK for static triage,
+review the explainable score and extracted evidence, optionally run the bounded AI
+investigator, and deliberately opt into emulator analysis when runtime evidence is
+needed. The interface uses the IBM Carbon icon system and remains usable on compact
+screens without a separate frontend build step.
+
+<details>
+<summary>Compact responsive layout</summary>
+
+![APK Fraud Analyzer compact dashboard](docs/images/dashboard-compact.png)
+
+</details>
+
+Key UI capabilities:
+
+- Drag-and-drop APK selection with clear static-analysis safety messaging.
+- Explainable risk gauge, score breakdown, permissions, APIs, IOCs, signatures, and ATT&CK mapping.
+- Bounded local/Gemini investigation with an auditable action trail.
+- PDF and IOC exports, persisted sample history, and explicit emulator-only dynamic analysis.
+
 ## 📚 Full documentation
 
 **[docs/](docs/README.md)** — a complete guide from pure basics to advanced internals:
