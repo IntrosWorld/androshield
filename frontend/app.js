@@ -23,6 +23,19 @@ const safeHttpUrl = (value) => {
   } catch (_) { return "#"; }
 };
 
+function setButtonBusy(button, busy, busyLabel) {
+  if (!button) return;
+  if (busy && !button.dataset.idleHtml) button.dataset.idleHtml = button.innerHTML;
+  button.setAttribute("aria-busy", String(busy));
+  button.classList.toggle("btn-busy", busy);
+  button.disabled = busy;
+  if (busy) {
+    button.textContent = busyLabel;
+  } else if (button.dataset.idleHtml) {
+    button.innerHTML = button.dataset.idleHtml;
+  }
+}
+
 // --- Gemini badge ---
 let healthData = {};
 function refreshHealth() {
@@ -73,19 +86,33 @@ refreshHealth();
 // --- File selection ---
 const dropzone = $("dropzone"), fileInput = $("file-input");
 dropzone.addEventListener("click", () => fileInput.click());
-dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("border-cyan-500"); });
-dropzone.addEventListener("dragleave", () => dropzone.classList.remove("border-cyan-500"));
+dropzone.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    fileInput.click();
+  }
+});
+dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("is-dragging"); });
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("is-dragging"));
 dropzone.addEventListener("drop", (e) => {
-  e.preventDefault(); dropzone.classList.remove("border-cyan-500");
+  e.preventDefault(); dropzone.classList.remove("is-dragging");
   if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
 });
 fileInput.addEventListener("change", () => { if (fileInput.files.length) setFile(fileInput.files[0]); });
 
 function setFile(f) {
-  if (!f.name.toLowerCase().endsWith(".apk")) { showError("Please select a .apk file."); return; }
+  if (!f.name.toLowerCase().endsWith(".apk")) {
+    selectedFile = null;
+    $("file-name").textContent = "";
+    $("analyze-btn").disabled = true;
+    dropzone.classList.remove("has-file");
+    showError("Please select a .apk file.");
+    return;
+  }
   selectedFile = f;
-  $("file-name").textContent = `${f.name} (${(f.size / 1048576).toFixed(2)} MB)`;
+  $("file-name").textContent = `Selected: ${f.name} · ${(f.size / 1048576).toFixed(2)} MB`;
   $("analyze-btn").disabled = false;
+  dropzone.classList.add("has-file");
   hideError();
 }
 
@@ -95,7 +122,7 @@ $("analyze-btn").addEventListener("click", async () => {
   hideError();
   $("results").classList.add("hidden");
   $("loading").classList.remove("hidden");
-  $("analyze-btn").disabled = true;
+  setButtonBusy($("analyze-btn"), true, "Analyzing APK…");
 
   const fd = new FormData();
   fd.append("file", selectedFile);
@@ -112,7 +139,8 @@ $("analyze-btn").addEventListener("click", async () => {
     showError(e.message);
   } finally {
     $("loading").classList.add("hidden");
-    $("analyze-btn").disabled = false;
+    setButtonBusy($("analyze-btn"), false);
+    $("analyze-btn").disabled = !selectedFile;
   }
 });
 
@@ -356,8 +384,7 @@ function renderAgent(agent) {
 $("agent-run-btn")?.addEventListener("click", async () => {
   if (!currentId) return;
   const button = $("agent-run-btn"), body = $("agent-body");
-  button.disabled = true;
-  button.textContent = "Investigating…";
+  setButtonBusy(button, true, "Investigating…");
   body.innerHTML = '<p class="text-cyan-300">The bounded agent is reviewing extracted evidence. CPU-only local inference may take several minutes; the server remains responsive.</p>';
   try {
     const response = await fetch(`${API}/api/agent/investigate/${encodeURIComponent(currentId)}`, {method: "POST"});
@@ -371,7 +398,7 @@ $("agent-run-btn")?.addEventListener("click", async () => {
   } catch (error) {
     body.innerHTML = `<p class="text-rose-400">${esc(error.message)}</p>`;
   } finally {
-    button.textContent = "Run AI Investigation";
+    setButtonBusy(button, false);
     button.disabled = !healthData.agentic?.enabled;
   }
 });
@@ -385,7 +412,7 @@ async function loadHistory() {
     if (!samples || !samples.length) { $("history-card").classList.add("hidden"); return; }
     $("history-card").classList.remove("hidden");
     $("history-list").innerHTML = samples.slice(0, 12).map(s => `
-      <div class="flex items-center justify-between gap-3 py-1.5 px-2 rounded hover:bg-white/5 cursor-pointer" data-id="${s.id}">
+      <div class="history-row flex items-center justify-between gap-3 py-2 px-3 rounded-lg cursor-pointer" data-id="${s.id}" role="button" tabindex="0">
         <div class="min-w-0">
           <span class="text-slate-200 text-sm truncate">${esc(s.filename || s.package_name || s.id)}</span>
           <span class="text-slate-500 text-xs ml-2 font-mono">${esc(s.package_name || "")}</span>
@@ -394,8 +421,16 @@ async function loadHistory() {
           <span class="text-slate-400 text-sm">${s.risk_score ?? "—"}</span>${SEV_CHIP(s.severity)}
         </div>
       </div>`).join("");
-    $("history-list").querySelectorAll("[data-id]").forEach(el =>
-      el.addEventListener("click", () => openSample(el.getAttribute("data-id"))));
+    $("history-list").querySelectorAll("[data-id]").forEach(el => {
+      const open = () => openSample(el.getAttribute("data-id"));
+      el.addEventListener("click", open);
+      el.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      });
+    });
   } catch (e) { /* ignore */ }
 }
 async function openSample(id) {
@@ -441,7 +476,7 @@ async function runDynamic() {
   $("dyn-results").classList.add("hidden");
   $("dyn-loading").classList.remove("hidden");
   $("dyn-loading-text").textContent = `Installing & running for ${dur}s${frida ? " with Frida hooks" : ""}…`;
-  $("dyn-run-btn").disabled = true;
+  setButtonBusy($("dyn-run-btn"), true, "Running safely…");
 
   const fd = new FormData();
   fd.append("file", selectedFile);
@@ -458,7 +493,7 @@ async function runDynamic() {
     $("dyn-results").innerHTML = `<p class="text-red-400 text-sm">${esc(e.message)}</p>`;
   } finally {
     $("dyn-loading").classList.add("hidden");
-    $("dyn-run-btn").disabled = false;
+    setButtonBusy($("dyn-run-btn"), false);
   }
 }
 
