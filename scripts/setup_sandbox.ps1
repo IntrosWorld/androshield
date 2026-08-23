@@ -117,7 +117,7 @@ $fridaVer = $null
 if (Test-Path $VenvPy) {
   try { $fridaVer = (& $VenvPy -c "import frida; print(frida.__version__)").Trim() } catch {}
 }
-if (-not $fridaVer) { $fridaVer = "17.12.0"; Warn "Could not read frida version from venv; defaulting to $fridaVer" }
+if (-not $fridaVer) { $fridaVer = "16.7.19"; Warn "Could not read frida version from venv; defaulting to the pinned version $fridaVer" }
 
 $abi = (& $Adb -s $serial shell getprop ro.product.cpu.abi).Trim()
 switch -Wildcard ($abi) {
@@ -159,14 +159,15 @@ if (-not (Test-Path $binPath)) {
 
 # Push + run (kill any stale instance first).
 $remote = "/data/local/tmp/frida-server"
-& $Adb -s $serial shell "pkill -f frida-server" 2>$null | Out-Null
+& $Adb -s $serial shell "pkill -x frida-server" 2>$null | Out-Null
 Info "Pushing frida-server to device..."
 & $Adb -s $serial push $binPath $remote | Out-Null
 & $Adb -s $serial shell "chmod 755 $remote"
 Info "Starting frida-server..."
-# Launch detached: Start-Process keeps the adb-shell (and thus frida-server) alive
-# on the Windows side, so no in-shell backgrounding operator is needed.
-Start-Process -FilePath $Adb -ArgumentList @("-s", $serial, "shell", $remote) -WindowStyle Hidden
+# Close every inherited descriptor before backgrounding. This lets the adb shell exit
+# immediately while Android init adopts the server; no hidden Windows adb process is
+# left owning Frida's lifecycle.
+& $Adb -s $serial shell "nohup $remote >/dev/null 2>&1 </dev/null &"
 Start-Sleep -Seconds 3
 
 $running = & $Adb -s $serial shell "ps -A | grep frida-server" 2>$null

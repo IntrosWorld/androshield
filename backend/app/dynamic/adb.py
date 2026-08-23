@@ -127,7 +127,7 @@ def pid_of(package, serial=None):
     return out.split()[0] if out else None
 
 
-_CONSENT_LABELS = ["Continue", "CONTINUE", "Allow", "ALLOW",
+_CONSENT_LABELS = ["Wait", "Continue", "CONTINUE", "Allow", "ALLOW",
                    "While using the app", "Only this time", "Accept", "OK", "Agree"]
 
 

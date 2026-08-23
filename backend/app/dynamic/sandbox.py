@@ -163,11 +163,16 @@ _MAX_BROADCASTS = 60
 def collect_triggers(apk_path):
     """Parse the APK for every entry point we can trigger: launcher activity,
     receivers (+ their declared intent-filter actions) and services."""
-    out = {"main_activity": None, "receivers": [], "services": []}
+    out = {"main_activity": None, "receivers": [], "services": [], "target_sdk": None}
     try:
         from androguard.core.apk import APK
         a = APK(apk_path)
         out["main_activity"] = a.get_main_activity()
+        try:
+            target = a.get_target_sdk_version()
+            out["target_sdk"] = int(target) if target is not None else None
+        except (TypeError, ValueError):
+            pass
         for r in (a.get_receivers() or []):
             actions = []
             try:

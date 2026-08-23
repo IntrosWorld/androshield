@@ -73,15 +73,47 @@ def _get_frida_device(serial, frida):
 def _fire_triggers(package_name, triggers, serial):
     """Start the app's process via its entry points (so spawn-gating can catch it)."""
     default_actions = ["android.intent.action.BOOT_COMPLETED",
-                       "android.intent.action.USER_PRESENT"]
+                       "android.provider.Telephony.SMS_RECEIVED",
+                       "android.intent.action.USER_PRESENT",
+                       "android.intent.action.MY_PACKAGE_REPLACED"]
     for recv in (triggers or {}).get("receivers", []):
         comp = recv["name"] if "/" in recv["name"] else f"{package_name}/{recv['name']}"
-        for action in list(dict.fromkeys((recv.get("actions") or []) + default_actions))[:6]:
-            adb.shell(["am", "broadcast", "-a", action, "-n", comp], serial=serial, timeout=12)
+        # Exercise one component-specific action plus the highest-value common malware
+        # triggers. --async is essential: a hostile or broken BroadcastReceiver must not
+        # hold the HTTP request open until Android's broadcast timeout.
+        declared = list(recv.get("actions") or [])
+        actions = list(dict.fromkeys(declared[:1] + default_actions))[:5]
+        for action in actions:
+            adb.shell(["am", "broadcast", "--async", "-a", action, "-n", comp],
+                      serial=serial, timeout=5)
     for svc in (triggers or {}).get("services", []):
         comp = svc if "/" in svc else f"{package_name}/{svc}"
-        adb.shell(["am", "start-foreground-service", "-n", comp], serial=serial, timeout=12)
-    adb.shell(["monkey", "-p", package_name, "1"], serial=serial, timeout=12)
+        adb.shell(["am", "start-foreground-service", "-n", comp], serial=serial, timeout=6)
+    adb.shell(["monkey", "-p", package_name, "1"], serial=serial, timeout=6)
+
+
+def _prepare_legacy_permission_review(package_name, triggers, serial):
+    """Complete Android's one-time compatibility review for pre-Marshmallow apps.
+
+    Android 12+ intercepts the first launch of old target-SDK packages in
+    ReviewPermissionsActivity. Frida cannot spawn the package while that interstitial is
+    pending. We complete it once inside the isolated emulator, immediately force-stop the
+    app, and then let the normal suspended Frida spawn capture the analysis run from its
+    first instruction. Newer apps never take this path.
+    """
+    try:
+        target_sdk = int((triggers or {}).get("target_sdk"))
+    except (TypeError, ValueError):
+        return []
+    main = (triggers or {}).get("main_activity")
+    if target_sdk > 22 or not main:
+        return []
+
+    adb.launch(package_name, main, serial=serial, timeout=20)
+    tapped = adb.dismiss_consent_dialogs(serial, rounds=8)
+    adb.force_stop(package_name, serial=serial)
+    time.sleep(1.0)
+    return tapped
 
 
 def run_unpack(package_name, duration=20, serial=None, dump_dir=None, triggers=None):
@@ -102,6 +134,7 @@ def run_unpack(package_name, duration=20, serial=None, dump_dir=None, triggers=N
     import frida
     ver = frida.__version__
     events, dumps, dex_paths, antivm = [], [], [], []
+    launch_dialogs = []
     counter = {"n": 0}
 
     def on_message(message, data):
@@ -181,6 +214,8 @@ def run_unpack(package_name, duration=20, serial=None, dump_dir=None, triggers=N
         if device is None:
             return {"available": True, "ran": False, "reason": _setup_hint(ver)}
 
+        review_taps = _prepare_legacy_permission_review(package_name, triggers, serial)
+
         # Launcher apps: spawn suspended → hook → resume (catches earliest code).
         main = (triggers or {}).get("main_activity")
         if main:
@@ -189,6 +224,12 @@ def run_unpack(package_name, duration=20, serial=None, dump_dir=None, triggers=N
                 target["pid"] = pid
                 _instrument(pid)
                 device.resume(pid)
+                # Modern Android shows an additional old-app compatibility modal after
+                # the package process starts. Clear it while hooks are live, then exercise
+                # the declared receivers/services so launcher apps get the same behavioural
+                # coverage as headless droppers.
+                launch_dialogs = adb.dismiss_consent_dialogs(serial, rounds=4)
+                _fire_triggers(package_name, triggers, serial)
             except Exception:
                 main = None
 
@@ -261,6 +302,8 @@ def run_unpack(package_name, duration=20, serial=None, dump_dir=None, triggers=N
 
     return {
         "available": True, "ran": True, "frida_version": ver,
+        "legacy_review_dismissed": review_taps,
+        "launch_dialogs_dismissed": launch_dialogs,
         "antivm_applied": antivm, "dex_load_paths": dex_paths,
         "events": events[:100], "dumps": dumps, "dump_count": len(dumps),
     }

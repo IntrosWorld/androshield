@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from app.dynamic import sandbox
+from app.dynamic import adb, frida_runner, sandbox
 
 
 class DynamicParserTests(unittest.TestCase):
@@ -48,6 +49,42 @@ class DynamicParserTests(unittest.TestCase):
         self.assertLessEqual(score, 100)
         self.assertGreater(score, 0)
         self.assertTrue(all({"category", "points", "detail"} <= set(item) for item in breakdown))
+
+    def test_consent_dismissal_handles_system_ui_wait_dialog(self):
+        wait_xml = '<node text="Wait" bounds="[100,200][300,400]" />'
+        calls = [
+            (0, "", ""), (0, wait_xml, ""), (0, "", ""),
+            (0, "", ""), (0, '<hierarchy />', ""),
+        ]
+        with patch("app.dynamic.adb._run", side_effect=calls) as run:
+            with patch("time.sleep"):
+                self.assertEqual(["Wait"], adb.dismiss_consent_dialogs("emulator-5554", rounds=2))
+        tap = run.call_args_list[2].args[0]
+        self.assertEqual(["shell", "input", "tap", "200", "300"], tap)
+
+    def test_legacy_review_preflight_is_force_stopped_before_frida(self):
+        triggers = {"target_sdk": 17, "main_activity": "c.l.MainActivity"}
+        with patch.object(adb, "launch") as launch, \
+                patch.object(adb, "dismiss_consent_dialogs", return_value=["Wait", "Continue"]), \
+                patch.object(adb, "force_stop") as force_stop, patch("time.sleep"):
+            tapped = frida_runner._prepare_legacy_permission_review(
+                "c.l", triggers, "emulator-5554")
+        self.assertEqual(["Wait", "Continue"], tapped)
+        launch.assert_called_once_with("c.l", "c.l.MainActivity", serial="emulator-5554", timeout=20)
+        force_stop.assert_called_once_with("c.l", serial="emulator-5554")
+
+    def test_frida_receiver_triggers_are_async_and_include_sms(self):
+        triggers = {
+            "receivers": [{"name": "c.l.GPRe", "actions": ["custom.ACTION"]}],
+            "services": [],
+        }
+        with patch.object(adb, "shell") as shell:
+            frida_runner._fire_triggers("c.l", triggers, "emulator-5554")
+        commands = [call.args[0] for call in shell.call_args_list]
+        broadcasts = [cmd for cmd in commands if cmd[:2] == ["am", "broadcast"]]
+        self.assertTrue(broadcasts)
+        self.assertTrue(all("--async" in cmd for cmd in broadcasts))
+        self.assertTrue(any("android.provider.Telephony.SMS_RECEIVED" in cmd for cmd in broadcasts))
 
 
 if __name__ == "__main__":
