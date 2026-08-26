@@ -251,6 +251,10 @@
     .recommendation-item { position: relative; min-height: 62px; padding: .82rem .9rem .82rem 2.6rem; border: 1px solid var(--line); border-radius: 2px; background: var(--surface-muted); color: var(--code); line-height: 1.45; }
     .recommendation-item::before { content: attr(data-index); position: absolute; left: .9rem; top: .92rem; color: var(--accent); font: 500 10px/1 var(--font-ui); }
     .sandbox-panel { border-color: var(--sandbox-line); background: var(--sandbox-bg); }
+    .manual-sandbox > summary { cursor: pointer; list-style: none; }
+    .manual-sandbox > summary::-webkit-details-marker { display: none; }
+    .manual-sandbox .disclosure-icon { transition: transform .15s ease; }
+    .manual-sandbox[open] .disclosure-icon { transform: rotate(180deg); }
     .theme-toggle { min-height: 32px; padding: .42rem .7rem; font-size: .75rem; }
     .icon-button { width: 34px; min-height: 32px; padding: .4rem; }
     .settings-dialog {
@@ -482,8 +486,8 @@
         <a href="#narrative">Assessment</a>
         <a href="#static-evidence">Static evidence</a>
         <a href="#threat-intel">Threat mapping</a>
-        <a href="#sandbox">Sandbox</a>
         <a href="#action-plan">Action plan</a>
+        <a href="#sandbox">Advanced tools</a>
       </nav>
 
       <section id="narrative" class="workspace-section">
@@ -552,16 +556,21 @@
         </div>
       </section>
 
-      <section id="sandbox" class="workspace-section">
-        <div class="section-intro"><h2>Sandbox</h2><p>Optional runtime analysis, isolated from the static pipeline.</p></div>
-        <article class="evidence-panel sandbox-panel">
-          <div class="panel-head flex-wrap">
+      <section id="action-plan" class="workspace-section">
+        <div class="section-intro"><h2>Action plan</h2><p>Prioritized response steps generated from the extracted evidence.</p></div>
+        <article class="evidence-panel"><div class="panel-head"><h3 class="panel-title">Recommended analyst actions</h3></div><ol id="recs" class="panel-body recommendation-grid text-sm"></ol></article>
+      </section>
+
+      <section id="sandbox" class="workspace-section pb-8">
+        <div class="section-intro"><h2>Advanced tools</h2><p>Manual analyst overrides for targeted or repeatable emulator tests.</p></div>
+        <details id="manual-sandbox" class="evidence-panel sandbox-panel manual-sandbox">
+          <summary class="panel-head flex-wrap">
             <div>
-              <h3 class="panel-title text-amber-200"><i class="ti ti-device-mobile" aria-hidden="true"></i>Dynamic analysis in an emulator</h3>
-              <p class="text-xs text-slate-500 mt-1">Installs and runs the APK only in the selected isolated Android virtual device.</p>
+              <h3 class="panel-title text-amber-200"><i class="ti ti-device-mobile" aria-hidden="true"></i>Manual Sandbox <span class="chip ml-1">Advanced</span></h3>
+              <p class="text-xs text-slate-500 mt-1">Use this to force or repeat a specific test. For normal investigations, use Agentic Investigation above.</p>
             </div>
-            <span id="emu-status" class="text-xs"></span>
-          </div>
+            <div class="flex items-center gap-2"><span id="emu-status" class="text-xs"></span><i class="ti ti-chevron-down disclosure-icon" aria-hidden="true"></i></div>
+          </summary>
           <div class="panel-body">
             <div class="flex items-end gap-3 flex-wrap">
               <label class="text-xs text-slate-400">Device<br><select id="dyn-device" class="control mt-1 text-sm min-w-[12rem] max-w-[16rem]"></select></label>
@@ -575,12 +584,7 @@
             <div id="dyn-loading" class="hidden mt-4 text-sm text-slate-400" role="status" aria-live="polite"><span class="inline-block w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin align-middle"></span><span id="dyn-loading-text" class="align-middle ml-2">Running in emulator…</span></div>
             <div id="dyn-results" class="hidden mt-4"></div>
           </div>
-        </article>
-      </section>
-
-      <section id="action-plan" class="workspace-section pb-8">
-        <div class="section-intro"><h2>Action plan</h2><p>Prioritized response steps generated from the extracted evidence.</p></div>
-        <article class="evidence-panel"><div class="panel-head"><h3 class="panel-title">Recommended analyst actions</h3></div><ol id="recs" class="panel-body recommendation-grid text-sm"></ol></article>
+        </details>
       </section>
     </section>
   </main>
@@ -600,7 +604,7 @@
       <div class="settings-scroll">
         <section class="settings-section" aria-labelledby="settings-runtime-title">
           <h3 id="settings-runtime-title">Runtime controls</h3>
-          <p>Agent actions remain bounded to extracted evidence and cannot execute an APK.</p>
+          <p>AI Review is read-only. Agentic Investigation requires approval before any sandbox execution.</p>
           <div class="settings-grid">
             <label class="toggle-row field-wide" for="setting-agent-enabled">
               <span class="toggle-copy"><strong>AI Review</strong><span>Allow the selected model to explain and correlate extracted evidence using read-only tools.</span></span>
@@ -611,7 +615,7 @@
               <input id="setting-agent-workflow-enabled" name="agent_workflow_enabled" type="checkbox" />
             </label>
             <label class="toggle-row" for="setting-agent-auto-run">
-              <span class="toggle-copy"><strong>Run after static analysis</strong><span>Start investigation automatically for valid APKs.</span></span>
+              <span class="toggle-copy"><strong>Run AI Review automatically</strong><span>Review extracted evidence after each valid static analysis; this never runs the APK.</span></span>
               <input id="setting-agent-auto-run" name="agent_auto_run" type="checkbox" />
             </label>
             <label class="toggle-row" for="setting-gemini-review">

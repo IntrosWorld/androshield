@@ -163,8 +163,9 @@ VirusTotal panel means "clean" or "no API key" — the badge says which.
 | Analyze | `POST /api/analyze` | Loading state → `render()` → history refresh |
 | Click a history row | `GET /api/samples/{id}` | Re-renders the stored result |
 | Download PDF / CSV / JSON | `GET …/report.pdf`, `…/iocs.csv`, `…/iocs.json` | Browser download |
-| Investigate | `POST /api/agent/investigate/{id}` | `renderAgent()` with hypotheses + audit |
-| Run dynamic | `POST /api/dynamic` | `renderDynamic()` with runtime findings |
+| Run AI Review | `POST /api/agent/investigate/{id}` | `renderAgent()` with grounded hypotheses + audit |
+| Start Agentic Investigation | `POST /api/agent/workflow/{id}` | Approval-controlled sandbox proposal and observations |
+| Run manual sandbox | `POST /api/dynamic` | `renderDynamic()` with runtime findings |
 
 Errors surface in a dedicated error box via `showError()` / `hideError()` using
 `textContent`, so a server error message containing attacker-derived text cannot inject
@@ -172,9 +173,25 @@ markup.
 
 ---
 
-## 7. The agent panel
+## 7. Review and investigation hierarchy
 
-When an investigation exists, the panel renders:
+The results page deliberately separates three capabilities:
+
+1. **AI Review** explains already-extracted evidence and never changes the score or
+   executes the APK. It shows the three leading hypotheses first; remaining hypotheses,
+   evidence gaps, grounding review, and action audit are available under **View full AI
+   Review**.
+2. **Agentic Investigation** is the primary runtime workflow. It proposes bounded
+   sandbox actions, pauses for approval, observes the result, and decides whether another
+   allowlisted action is justified.
+3. **Manual Sandbox** is an advanced override for analysts who need a specific repeatable
+   emulator configuration. It is collapsed by default so it does not compete with the
+   guided workflow.
+
+The action plan appears before advanced tools, and recent-analysis rows include both the
+package and analysis time so repeated filenames remain distinguishable.
+
+When an AI Review exists, the panel renders:
 
 - **Hypotheses** — claim, a confidence chip (`low`/`medium`/`high`), and the cited
   evidence IDs.

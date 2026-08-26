@@ -128,6 +128,26 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("through hosted ${provider}", JS)
         self.assertNotIn("CPU-only local inference", JS)
 
+    def test_results_prioritize_guided_workflow_over_manual_tools(self):
+        manual_sandbox = tag_with_id(HTML, "manual-sandbox")
+        self.assertTrue(manual_sandbox.lower().startswith("<details"))
+        self.assertNotRegex(manual_sandbox, r"\sopen(?:\s|=|>)")
+        self.assertIn("Manual Sandbox", HTML)
+        self.assertIn("For normal investigations, use Agentic Investigation above", HTML)
+        self.assertLess(HTML.index('id="workflow-card"'), HTML.index('id="manual-sandbox"'))
+        self.assertLess(HTML.index('id="action-plan"'), HTML.index('id="sandbox"'))
+
+    def test_ai_review_and_history_use_progressive_disclosure(self):
+        self.assertIn("hypothesisCards.slice(0, 3)", JS)
+        self.assertIn("View full AI Review", JS)
+        self.assertIn("s.upload_time", JS)
+        self.assertIn("toLocaleString", JS)
+
+    def test_settings_distinguish_read_only_review_from_sandbox_execution(self):
+        self.assertIn("AI Review is read-only", HTML)
+        self.assertIn("Run AI Review automatically", HTML)
+        self.assertIn("this never runs the APK", HTML)
+
     def test_dynamic_ui_agent_exposes_tree_and_vision_modes(self):
         mode = tag_with_id(HTML, "dyn-ui-agent-mode")
         self.assertIn('value="tree"', HTML)

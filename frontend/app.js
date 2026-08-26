@@ -677,11 +677,13 @@ function renderAgent(agent) {
       : '<p class="text-slate-500">Disabled. Set <code>AGENT_ENABLED=true</code> to enable the bounded investigator.</p>';
     return;
   }
-  const hypotheses = (agent.hypotheses || []).map(h => `
+  const hypothesisCards = (agent.hypotheses || []).map(h => `
     <div class="agent-hypothesis">
       <div class="flex gap-2 items-start"><span class="chip chip-info shrink-0">${esc(h.confidence)}</span><span class="text-slate-200">${esc(h.claim)}</span></div>
       <div class="mt-2 text-xs text-slate-500">Evidence: ${(h.evidence_ids || []).map(esc).join(", ")}</div>
-    </div>`).join("") || '<p class="text-slate-500">No grounded hypothesis was produced.</p>';
+    </div>`);
+  const primaryHypotheses = hypothesisCards.slice(0, 3).join("") || '<p class="text-slate-500">No grounded hypothesis was produced.</p>';
+  const additionalHypotheses = hypothesisCards.slice(3).join("");
   const audit = (agent.audit || []).map(step => `
     <div class="flex justify-between gap-3 border-b border-slate-800 py-1.5">
       <span><span class="text-slate-500">${esc(step.step)}.</span> ${esc(step.action)}</span>
@@ -691,10 +693,13 @@ function renderAgent(agent) {
   const review = agent.gemini_review ? `<div class="mt-3 text-xs text-slate-400">Gemini review: <span class="${agent.gemini_review.grounded ? "text-emerald-400" : "text-amber-400"}">${agent.gemini_review.grounded ? "grounded" : "issues found"}</span>${(agent.gemini_review.unsupported_claims || []).length ? `. Unsupported: ${agent.gemini_review.unsupported_claims.map(esc).join("; ")}` : ""}</div>` : "";
   body.innerHTML = `
     <div class="flex flex-wrap gap-2 mb-3"><span class="chip ${statusChipTone(agent.status)}">${esc(agent.status)}</span><span class="chip">${esc(agent.provider || "Unavailable")} / ${esc(agent.model || "Unavailable")}</span><span class="chip">${esc(agent.steps_used || 0)} steps, ${esc(agent.duration_ms || 0)} ms</span></div>
-    <div class="space-y-2">${hypotheses}</div>
-    ${gaps ? `<div class="mt-3"><div class="text-xs uppercase tracking-wide text-slate-500">Evidence gaps</div><ul class="list-disc pl-5 mt-1 text-slate-400">${gaps}</ul></div>` : ""}
-    ${review}
-    <details class="mt-4"><summary class="cursor-pointer text-xs text-slate-500">Action audit (${(agent.audit || []).length})</summary><div class="mt-2">${audit || "No actions."}</div></details>`;
+    <div class="space-y-2">${primaryHypotheses}</div>
+    ${(additionalHypotheses || gaps || review || audit) ? `<details class="mt-4"><summary class="cursor-pointer text-xs font-medium text-cyan-500">View full AI Review${additionalHypotheses ? ` (${hypothesisCards.length} findings)` : ""}</summary>
+      <div class="mt-3 space-y-2">${additionalHypotheses}</div>
+      ${gaps ? `<div class="mt-3"><div class="text-xs uppercase tracking-wide text-slate-500">Evidence gaps</div><ul class="list-disc pl-5 mt-1 text-slate-400">${gaps}</ul></div>` : ""}
+      ${review}
+      <div class="mt-4"><div class="text-xs uppercase tracking-wide text-slate-500">Action audit (${(agent.audit || []).length})</div><div class="mt-2">${audit || "No actions."}</div></div>
+    </details>` : ""}`;
 }
 
 $("agent-run-btn")?.addEventListener("click", async () => {
@@ -916,16 +921,19 @@ async function loadHistory() {
     const { samples } = await r.json();
     if (!samples || !samples.length) { $("history-card").classList.add("hidden"); return; }
     $("history-card").classList.remove("hidden");
-    $("history-list").innerHTML = samples.slice(0, 12).map(s => `
+    $("history-list").innerHTML = samples.slice(0, 12).map(s => {
+      const analyzedAt = s.upload_time ? new Date(s.upload_time * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "Date unavailable";
+      return `
       <div class="history-row flex items-center justify-between gap-3 py-2 px-3 rounded-lg cursor-pointer" data-id="${s.id}" role="button" tabindex="0">
         <div class="min-w-0">
-          <span class="text-slate-200 text-sm truncate">${esc(s.filename || s.package_name || s.id)}</span>
-          <span class="text-slate-500 text-xs ml-2 font-mono">${esc(s.package_name || "")}</span>
+          <div class="text-slate-200 text-sm truncate">${esc(s.filename || s.package_name || s.id)}</div>
+          <div class="text-slate-500 text-xs mt-0.5"><span class="font-mono">${esc(s.package_name || "Package unavailable")}</span><span class="mx-1">·</span><span>${esc(analyzedAt)}</span></div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           <span class="text-slate-400 text-sm">${s.risk_score ?? "Unknown"}</span>${SEV_CHIP(s.severity)}
         </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
     $("history-list").querySelectorAll("[data-id]").forEach(el => {
       const open = () => openSample(el.getAttribute("data-id"));
       el.addEventListener("click", open);
