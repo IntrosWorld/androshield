@@ -1,7 +1,10 @@
-import re
+import asyncio
 import os
+import re
+import tempfile
 import unittest
 from io import BytesIO
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException, UploadFile
 from app.analyzer import api_patterns, iocs, permissions, risk_scoring, static_analyzer, yara_scan
@@ -364,6 +367,71 @@ class RobustnessTests(unittest.IsolatedAsyncioTestCase):
                 os.remove(path)
         finally:
             main.MAX_UPLOAD_MB = original_limit
+
+    async def test_cancelled_upload_removes_partial_temporary_file(self):
+        class CancelledUpload:
+            def __init__(self):
+                self.reads = 0
+
+            async def read(self, _size):
+                self.reads += 1
+                if self.reads == 1:
+                    return b"partial apk bytes"
+                raise asyncio.CancelledError
+
+        real_named_temporary_file = tempfile.NamedTemporaryFile
+        created_paths = []
+
+        def tracked_temporary_file(*args, **kwargs):
+            handle = real_named_temporary_file(*args, **kwargs)
+            created_paths.append(handle.name)
+            return handle
+
+        with patch.object(
+            main.tempfile, "NamedTemporaryFile", side_effect=tracked_temporary_file,
+        ):
+            with self.assertRaises(asyncio.CancelledError):
+                await main._spool_upload(CancelledUpload())
+
+        self.assertEqual(1, len(created_paths))
+        self.assertFalse(os.path.exists(created_paths[0]))
+
+    async def test_dynamic_runner_is_dispatched_off_the_event_loop(self):
+        upload = UploadFile(filename="sample.apk", file=BytesIO(b"PK\x03\x04test"))
+        sandbox_state = {
+            "available": True,
+            "serial": "emulator-5554",
+            "devices": [{"serial": "emulator-5554", "avd_name": "FraudSandbox"}],
+        }
+        result = {"available": True, "ran": True, "dynamic_score": 0}
+        with patch.object(main.dyn_sandbox, "status", return_value=sandbox_state), \
+             patch.object(main, "_apk_identity", return_value=("org.test", ".Main")), \
+             patch.object(main, "run_in_threadpool", new=AsyncMock(return_value=result)) as dispatch:
+            response = await main.dynamic_analyze(
+                upload, 15, False, False, None, "tree",
+            )
+
+        dispatch.assert_awaited_once()
+        args, kwargs = dispatch.await_args
+        self.assertIs(main.dyn_sandbox.run_dynamic, args[0])
+        self.assertEqual("org.test", args[2])
+        self.assertEqual("emulator-5554", kwargs["serial"])
+        self.assertEqual(200, response.status_code)
+
+    async def test_analysis_failure_does_not_disclose_internal_details(self):
+        upload = UploadFile(filename="sample.apk", file=BytesIO(b"PK\x03\x04test"))
+        with patch.object(main.static_analyzer, "engine_available", return_value=True), \
+             patch.object(
+                 main.static_analyzer, "analyze",
+                 side_effect=RuntimeError(r"secret path F:\private\sample.apk"),
+             ):
+            with self.assertRaises(HTTPException) as context:
+                await main.analyze(upload)
+
+        self.assertEqual(500, context.exception.status_code)
+        self.assertEqual(
+            "Analysis failed; see server logs for details", context.exception.detail,
+        )
 
     async def test_pdf_escapes_untrusted_markup(self):
         analysis = {

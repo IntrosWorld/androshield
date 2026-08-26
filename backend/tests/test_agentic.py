@@ -51,6 +51,14 @@ def _analysis(injected_text="ordinary evidence"):
     }
 
 
+def _sandbox_status(serial="emulator-5554", avd_name="FraudSandbox"):
+    return {
+        "available": True,
+        "serial": serial,
+        "devices": [{"serial": serial, "avd_name": avd_name}],
+    }
+
+
 class SequenceProvider(AgentProvider):
     name = "fake"
     model = "deterministic-test"
@@ -509,12 +517,36 @@ class AgentWorkflowApiTests(unittest.IsolatedAsyncioTestCase):
         analysis["agentic_workflow"] = agent_workflow.start(analysis, {"hypotheses": []})
         action_id = analysis["agentic_workflow"]["proposals"][0]["id"]
         upload = UploadFile(filename="different.apk", file=io.BytesIO(b"different apk"))
-        with patch.dict(os.environ, {"AGENT_WORKFLOW_ENABLED": "true"}), \
+        with patch.dict(os.environ, {
+                 "AGENT_ENABLED": "true", "AGENT_WORKFLOW_ENABLED": "true",
+             }), \
              patch.object(main.db, "get_sample", return_value={"analysis": analysis, "report": {}}), \
+             patch.object(main.dyn_sandbox, "status", return_value=_sandbox_status()), \
              patch.object(main, "dynamic_analyze", new=AsyncMock()) as dynamic:
             with self.assertRaises(HTTPException) as context:
                 await main.approve_agent_workflow_action("case123", upload, action_id, None)
         self.assertEqual(400, context.exception.status_code)
+        dynamic.assert_not_awaited()
+
+    async def test_approval_rejects_a_non_sandbox_emulator(self):
+        analysis = _analysis()
+        analysis["agentic_workflow"] = agent_workflow.start(analysis, {"hypotheses": []})
+        action_id = analysis["agentic_workflow"]["proposals"][0]["id"]
+        upload = UploadFile(filename="sample.apk", file=io.BytesIO(b"unused"))
+        with patch.dict(os.environ, {"AGENT_ENABLED": "true", "AGENT_WORKFLOW_ENABLED": "true"}), \
+             patch.object(main.db, "get_sample", return_value={"analysis": analysis, "report": {}}), \
+             patch.object(
+                 main.dyn_sandbox, "status",
+                 return_value=_sandbox_status("emulator-5556", "PersonalPhone"),
+             ), \
+             patch.object(main, "dynamic_analyze", new=AsyncMock()) as dynamic:
+            with self.assertRaises(HTTPException) as context:
+                await main.approve_agent_workflow_action(
+                    "case123", upload, action_id, "emulator-5556",
+                )
+
+        self.assertEqual(400, context.exception.status_code)
+        self.assertIn("dedicated AVD", context.exception.detail)
         dynamic.assert_not_awaited()
 
     async def test_approved_action_uses_server_config_and_preserves_static_score(self):
@@ -530,6 +562,7 @@ class AgentWorkflowApiTests(unittest.IsolatedAsyncioTestCase):
         upload = UploadFile(filename="matching.apk", file=io.BytesIO(apk_bytes))
         with patch.dict(os.environ, {"AGENT_ENABLED": "true", "AGENT_WORKFLOW_ENABLED": "true"}), \
              patch.object(main.db, "get_sample", return_value={"analysis": analysis, "report": {}}), \
+             patch.object(main.dyn_sandbox, "status", return_value=_sandbox_status()), \
              patch.object(main, "dynamic_analyze", new=AsyncMock(return_value=JSONResponse(dynamic_result))) as dynamic, \
              patch.object(main, "run_in_threadpool", new=AsyncMock(return_value=reviewed)), \
              patch.object(main.gemini_client, "review_investigation", return_value=reviewed), \

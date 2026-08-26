@@ -4,6 +4,8 @@ Serves both the JSON API and the static single-page dashboard so the whole demo
 runs from one `uvicorn app.main:app` process.
 """
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 import hashlib
 import json
 import logging
@@ -38,14 +40,17 @@ MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
 
-app = FastAPI(title="APK Fraud Analyzer", version="1.0.0")
-cors_origins = [o.strip() for o in os.getenv(
-    "CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
-).split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware, allow_origins=cors_origins,
-    allow_methods=["GET", "POST", "PUT"], allow_headers=["Content-Type"],
-)
+
+def _remove_temporary_file(path: str | None) -> None:
+    """Best-effort cleanup for an upload owned by this process."""
+    if not path:
+        return
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        log.warning("Could not remove temporary upload %s", path, exc_info=True)
 
 
 def _require_loopback(request: Request) -> None:
@@ -83,17 +88,15 @@ async def _spool_upload(file: UploadFile) -> tuple[str, int]:
                     )
                 tmp.write(chunk)
         return path, total
-    except Exception:
-        if path and os.path.exists(path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+    except BaseException:
+        # asyncio.CancelledError derives from BaseException, not Exception. A client
+        # disconnect must not leave a partially uploaded APK behind.
+        _remove_temporary_file(path)
         raise
 
 
-@app.on_event("startup")
-def _startup():
+def _initialize_application() -> None:
+    """Initialize persisted state and report optional capability health."""
     db.init_db()
     runtime_settings.load_persisted()
     ready = static_analyzer.engine_available()
@@ -106,6 +109,22 @@ def _startup():
     if not ready:
         log.error("androguard is NOT importable in this interpreter — analysis will fail. "
                   "Start the server from backend/.venv (run: .\\.venv\\Scripts\\Activate.ps1).")
+
+
+@asynccontextmanager
+async def _lifespan(_application: FastAPI) -> AsyncIterator[None]:
+    _initialize_application()
+    yield
+
+
+app = FastAPI(title="APK Fraud Analyzer", version="1.0.0", lifespan=_lifespan)
+cors_origins = [o.strip() for o in os.getenv(
+    "CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
+).split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware, allow_origins=cors_origins,
+    allow_methods=["GET", "POST", "PUT"], allow_headers=["Content-Type"],
+)
 
 
 @app.get("/api/health")
@@ -245,13 +264,9 @@ async def analyze(file: UploadFile = File(...)):
         raise
     except Exception as e:
         log.exception("Analysis failed")
-        raise HTTPException(500, f"Analysis failed: {e}")
+        raise HTTPException(500, "Analysis failed; see server logs for details") from e
     finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
+        _remove_temporary_file(tmp_path)
 
 
 @app.post("/api/agent/investigate/{sample_id}")
@@ -412,6 +427,27 @@ def _sha256_path(path: str) -> str:
     return digest.hexdigest()
 
 
+def _require_dedicated_sandbox(status: dict, requested_serial: str | None) -> str:
+    """Resolve an Agentic Investigation target to the dedicated analysis AVD.
+
+    Manual analysis may deliberately target another connected emulator. The guided
+    workflow makes a stronger isolation promise, so it never accepts that override.
+    """
+    target_serial = requested_serial or status.get("serial")
+    target = next(
+        (device for device in status.get("devices", [])
+         if device.get("serial") == target_serial),
+        None,
+    )
+    if not target or target.get("avd_name") != dyn_sandbox.DEFAULT_SANDBOX_AVD:
+        raise HTTPException(
+            400,
+            f"Agentic Investigation requires the dedicated AVD "
+            f"'{dyn_sandbox.DEFAULT_SANDBOX_AVD}'",
+        )
+    return str(target_serial)
+
+
 _workflow_approval_lock = asyncio.Lock()
 
 
@@ -463,6 +499,11 @@ async def _approve_agent_workflow_action(
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 
+    sandbox_status = dyn_sandbox.status()
+    if not sandbox_status.get("available"):
+        raise HTTPException(503, sandbox_status.get("reason", "No emulator/device available."))
+    sandbox_serial = _require_dedicated_sandbox(sandbox_status, serial)
+
     # Verify the re-uploaded bytes against the saved case before invoking the existing
     # dynamic endpoint. The raw APK is never persisted in the workflow or database.
     verify_path = None
@@ -472,11 +513,7 @@ async def _approve_agent_workflow_action(
         if not expected_hash or _sha256_path(verify_path).lower() != expected_hash:
             raise HTTPException(400, "Re-uploaded APK does not match this investigation")
     finally:
-        if verify_path and os.path.exists(verify_path):
-            try:
-                os.remove(verify_path)
-            except OSError:
-                pass
+        _remove_temporary_file(verify_path)
     await file.seek(0)
 
     config = action["config"]
@@ -490,7 +527,7 @@ async def _approve_agent_workflow_action(
         duration=int(config["duration"]),
         use_frida=bool(config["use_frida"]),
         use_ui_agent=bool(config["use_ui_agent"]),
-        serial=serial,
+        serial=sandbox_serial,
         ui_agent_mode=str(config["ui_agent_mode"]),
     )
     dynamic_result = json.loads(dynamic_response.body.decode("utf-8"))
@@ -604,11 +641,17 @@ async def dynamic_analyze(
         package, main_activity = _apk_identity(tmp_path)
         if not package:
             raise HTTPException(400, "Could not read package name — not a valid APK?")
-        result = dyn_sandbox.run_dynamic(tmp_path, package, main_activity,
-                                         duration=duration, use_frida=use_frida,
-                                         serial=serial or None,
-                                         use_ui_agent=use_ui_agent,
-                                         ui_agent_mode=ui_agent_mode)
+        result = await run_in_threadpool(
+            dyn_sandbox.run_dynamic,
+            tmp_path,
+            package,
+            main_activity,
+            duration=duration,
+            use_frida=use_frida,
+            serial=target_serial,
+            use_ui_agent=use_ui_agent,
+            ui_agent_mode=ui_agent_mode,
+        )
         result["filename"] = file.filename
         result["main_activity"] = main_activity
         return JSONResponse(result)
@@ -616,13 +659,11 @@ async def dynamic_analyze(
         raise
     except Exception as e:
         log.exception("Dynamic analysis failed")
-        raise HTTPException(500, f"Dynamic analysis failed: {e}")
+        raise HTTPException(
+            500, "Dynamic analysis failed; see server logs for details",
+        ) from e
     finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
+        _remove_temporary_file(tmp_path)
 
 
 @app.get("/api/samples")
