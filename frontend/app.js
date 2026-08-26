@@ -430,6 +430,29 @@ function setFile(f) {
 }
 
 // --- Analyze ---
+const ANALYSIS_PHASE_LABELS = {
+  queued: "Queued behind another analysis…",
+  starting: "Starting analysis worker…",
+  static_analysis: "Extracting static APK evidence…",
+  intelligence: "Checking optional threat intelligence…",
+  ai_review: "Reviewing extracted evidence…",
+  reporting: "Generating the analyst report…",
+};
+
+async function waitForAnalysisJob(jobId) {
+  for (let attempt = 0; attempt < 2400; attempt += 1) {
+    const response = await fetch(`${API}/api/analysis-jobs/${encodeURIComponent(jobId)}`);
+    const job = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(job.detail || "Could not read analysis progress");
+    if (job.status === "completed" && job.sample_id) return job;
+    if (job.status === "failed") throw new Error(job.message || "Analysis failed");
+    $("loading-text").textContent = ANALYSIS_PHASE_LABELS[job.phase]
+      || plain(job.message || "Analysis is running…");
+    await new Promise(resolve => setTimeout(resolve, 750));
+  }
+  throw new Error("Analysis is still running. It will remain available in Recent Analyses when complete.");
+}
+
 $("analyze-btn").addEventListener("click", async () => {
   if (!selectedFile) return;
   hideError();
@@ -440,18 +463,19 @@ $("analyze-btn").addEventListener("click", async () => {
   const fd = new FormData();
   fd.append("file", selectedFile);
   try {
-    const res = await fetch(`${API}/api/analyze`, { method: "POST", body: fd });
+    const res = await fetch(`${API}/api/analysis-jobs`, { method: "POST", body: fd });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail || "Analysis failed");
     }
-    const data = await res.json();
-    currentId = data.id;
-    render(data.analysis, data.report);
+    const submitted = await res.json();
+    const completed = await waitForAnalysisJob(submitted.id);
+    await openSample(completed.sample_id);
   } catch (e) {
     showError(e.message);
   } finally {
     $("loading").classList.add("hidden");
+    $("loading-text").textContent = "Decompiling & analyzing APK…";
     setButtonBusy($("analyze-btn"), false);
     $("analyze-btn").disabled = !selectedFile;
   }

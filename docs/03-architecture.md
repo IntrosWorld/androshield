@@ -150,7 +150,13 @@ iit_hyd/
 
 ---
 
-## 4. The request lifecycle: `POST /api/analyze`
+## 4. The shared static-analysis lifecycle
+
+Both `POST /api/analyze` and the preferred asynchronous `POST /api/analysis-jobs`
+dispatch the same `analysis_service.analyze_path()` pipeline to a worker thread behind a
+bounded process-local semaphore. The job endpoint first persists a queue record, returns
+`202`, and lets the dashboard poll phase updates; the compatibility endpoint waits for
+the same service and returns the full result directly.
 
 ```mermaid
 sequenceDiagram
@@ -169,6 +175,7 @@ sequenceDiagram
     API->>API: extension check (.apk)
     API->>API: engine_available()? else 503
     API->>FS: stream in 1 MiB chunks, abort past MAX_UPLOAD_MB
+    Note over API,SA: capacity-controlled worker thread;<br/>FastAPI event loop remains responsive
     API->>SA: analyze(tmp_path)
     SA->>SA: SHA-256 + MD5 (streamed)
     SA->>SA: AnalyzeAPK → (apk, dex_list, dx)

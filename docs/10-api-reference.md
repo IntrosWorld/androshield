@@ -13,6 +13,8 @@ Source: [`backend/app/main.py`](../backend/app/main.py)
 | `GET` | `/api/health` | Capability and configuration report |
 | `GET` | `/api/agent/health` | Agent config **plus** a live provider probe |
 | `POST` | `/api/analyze` | Static analysis of an uploaded APK |
+| `POST` | `/api/analysis-jobs` | Queue static analysis and return a persistent job ID |
+| `GET` | `/api/analysis-jobs/{id}` | Read queued-analysis phase and result location |
 | `POST` | `/api/agent/investigate/{sample_id}` | Run the bounded agent on a stored sample |
 | `POST` | `/api/dynamic` | Emulator sandbox run (opt-in) |
 | `GET` | `/api/samples` | Recent analysis history |
@@ -110,6 +112,35 @@ result. Deletes the temp file on every exit path.
 Note that a *parse* failure is **not** a `500` — it returns `200` with
 `analysis_quality: "failed"`, `risk_score: null`, and `severity: "Unknown"`. Only an
 infrastructure failure is a 500.
+
+---
+
+## Asynchronous analysis jobs
+
+The dashboard uses `POST /api/analysis-jobs` instead of holding an HTTP request open
+through decompilation, optional intelligence, and reporting. The multipart request is
+the same as `/api/analyze`; a successful submission returns `202`:
+
+```json
+{
+  "id": "91c56f76f1554efe",
+  "status": "queued",
+  "phase": "queued",
+  "status_url": "/api/analysis-jobs/91c56f76f1554efe"
+}
+```
+
+Poll `GET /api/analysis-jobs/{id}`. Phases are `queued`, `starting`,
+`static_analysis`, `intelligence`, `ai_review`, `reporting`, and `completed`. A
+completed response includes `sample_id` and `result_url`. Job state is stored in SQLite;
+the temporary APK is not stored in the database and is deleted by the worker on every
+exit path. Jobs interrupted by a server restart are explicitly marked `failed` rather
+than remaining stuck in `running`.
+
+`STATIC_ANALYSIS_CONCURRENCY` bounds active pipelines (default 2), while
+`STATIC_ANALYSIS_QUEUE_LIMIT` bounds accepted queued/running jobs (default 20). The
+legacy `/api/analyze` endpoint remains available for API compatibility and uses the same
+threaded, capacity-controlled service.
 
 ---
 

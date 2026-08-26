@@ -15,7 +15,7 @@ import time
 from ipaddress import ip_address
 
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,18 +27,21 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("main")
 
-from .analyzer import static_analyzer, risk_scoring
+from .analyzer import static_analyzer
 from .genai import gemini_client
 from .intel import virustotal, apkid_scan
 from .ml import classifier as ml_classifier
 from .dynamic import sandbox as dyn_sandbox, frida_runner, ui_agent
 from .agent import orchestrator as agent_orchestrator
 from .agent import workflow as agent_workflow
-from . import db, optional_components, report as report_pdf, runtime_settings
+from . import analysis_service, db, optional_components, report as report_pdf, runtime_settings
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
+_dynamic_analysis_lock = asyncio.Lock()
+TEMP_UPLOAD_PREFIX = "apk-fraud-"
+TEMP_UPLOAD_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 def _remove_temporary_file(path: str | None) -> None:
@@ -51,6 +54,25 @@ def _remove_temporary_file(path: str | None) -> None:
         pass
     except OSError:
         log.warning("Could not remove temporary upload %s", path, exc_info=True)
+
+
+def _remove_stale_temporary_uploads() -> None:
+    """Remove only this application's abandoned uploads after an unclean stop."""
+    directory = tempfile.gettempdir()
+    cutoff = time.time() - TEMP_UPLOAD_MAX_AGE_SECONDS
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return
+    for name in names:
+        if not (name.startswith(TEMP_UPLOAD_PREFIX) and name.endswith(".apk")):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                _remove_temporary_file(path)
+        except OSError:
+            continue
 
 
 def _require_loopback(request: Request) -> None:
@@ -75,7 +97,9 @@ async def _spool_upload(file: UploadFile) -> tuple[str, int]:
     path = None
     total = 0
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".apk") as tmp:
+        with tempfile.NamedTemporaryFile(
+            delete=False, prefix=TEMP_UPLOAD_PREFIX, suffix=".apk",
+        ) as tmp:
             path = tmp.name
             while True:
                 chunk = await file.read(UPLOAD_CHUNK_BYTES)
@@ -98,6 +122,7 @@ async def _spool_upload(file: UploadFile) -> tuple[str, int]:
 def _initialize_application() -> None:
     """Initialize persisted state and report optional capability health."""
     db.init_db()
+    _remove_stale_temporary_uploads()
     runtime_settings.load_persisted()
     ready = static_analyzer.engine_available()
     log.info(
@@ -114,7 +139,15 @@ def _initialize_application() -> None:
 @asynccontextmanager
 async def _lifespan(_application: FastAPI) -> AsyncIterator[None]:
     _initialize_application()
-    yield
+    try:
+        yield
+    finally:
+        # A worker thread cannot be cancelled safely while it is reading an APK. Drain
+        # accepted jobs so each worker can persist its result and remove its temp file.
+        # A forced process stop is recovered as an interrupted job on the next startup.
+        tasks = list(_analysis_job_tasks)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 app = FastAPI(title="APK Fraud Analyzer", version="1.0.0", lifespan=_lifespan)
@@ -144,6 +177,15 @@ def health():
         "ui_agent": ui_agent.health(),
         "agentic": agent_orchestrator.agent_health(check_provider=False),
         "agentic_workflow": agent_workflow.health(),
+        "analysis_capacity": analysis_service.capacity_status(),
+        "analysis_queue": {
+            "limit": analysis_service.queue_limit,
+            "active_jobs": db.count_active_analysis_jobs(),
+        },
+        "dynamic_capacity": {
+            "limit": 1,
+            "active": int(_dynamic_analysis_lock.locked()),
+        },
     }
 
 
@@ -210,6 +252,7 @@ def agent_health():
 
 @app.post("/api/analyze")
 async def analyze(file: UploadFile = File(...)):
+    """Compatibility endpoint that waits for the shared worker pipeline to finish."""
     if not static_analyzer.engine_available():
         raise HTTPException(
             503,
@@ -223,43 +266,10 @@ async def analyze(file: UploadFile = File(...)):
     tmp_path = None
     try:
         tmp_path, _size = await _spool_upload(file)
-        # Preserve the original filename in the result.
-        analysis = static_analyzer.analyze(tmp_path)
-        analysis["file"]["filename"] = file.filename
-
-        # Optional external context (no-op if VT_API_KEY is unset). It is attached for
-        # analyst visibility only and cannot modify our local score or severity.
-        if analysis.get("valid_apk"):
-            vt = virustotal.lookup(
-                analysis["file"].get("sha256"),
-                domains=analysis.get("iocs", {}).get("domains", []),
-                ips=analysis.get("iocs", {}).get("ips", []),
-            )
-            risk_scoring.apply_virustotal(analysis, vt)
-
-        agent_config = agent_orchestrator.agent_health(check_provider=False)
-        if analysis.get("valid_apk") and agent_config["enabled"] and agent_config["auto_run"]:
-            score_before = (
-                analysis.get("risk_score"), analysis.get("severity"),
-                list(analysis.get("score_breakdown", [])),
-            )
-            investigation = await run_in_threadpool(agent_orchestrator.run_investigation, analysis)
-            score_after = (
-                analysis.get("risk_score"), analysis.get("severity"),
-                list(analysis.get("score_breakdown", [])),
-            )
-            if score_after != score_before:
-                raise RuntimeError("agent invariant violated: deterministic score changed")
-            analysis["agentic"] = gemini_client.review_investigation(analysis, investigation)
-
-        report = gemini_client.generate_report(analysis)
-        sample_id = db.save_sample(analysis, report)
-
-        return JSONResponse({
-            "id": sample_id,
-            "analysis": analysis,
-            "report": report,
-        })
+        result = await run_in_threadpool(
+            analysis_service.analyze_path, tmp_path, file.filename,
+        )
+        return JSONResponse(result)
     except HTTPException:
         raise
     except Exception as e:
@@ -267,6 +277,97 @@ async def analyze(file: UploadFile = File(...)):
         raise HTTPException(500, "Analysis failed; see server logs for details") from e
     finally:
         _remove_temporary_file(tmp_path)
+
+
+_analysis_job_tasks: set[asyncio.Task] = set()
+
+
+def _analysis_job_progress(job_id: str):
+    def update(phase: str, message: str) -> None:
+        db.update_analysis_job(
+            job_id, status="running", phase=phase, message=message,
+        )
+    return update
+
+
+async def _run_analysis_job(
+    job_id: str, apk_path: str, filename: str,
+) -> None:
+    try:
+        db.update_analysis_job(
+            job_id, status="running", phase="starting",
+            message="Static-analysis worker started.",
+        )
+        result = await run_in_threadpool(
+            analysis_service.analyze_path,
+            apk_path,
+            filename,
+            progress=_analysis_job_progress(job_id),
+        )
+        db.update_analysis_job(
+            job_id, status="completed", phase="completed",
+            message="Analysis completed.", sample_id=result["id"], error=None,
+        )
+    except asyncio.CancelledError:
+        db.update_analysis_job(
+            job_id, status="failed", phase="interrupted",
+            message="Analysis was interrupted before completion.",
+            error="Analysis interrupted",
+        )
+        raise
+    except Exception:
+        log.exception("Background analysis job %s failed", job_id)
+        db.update_analysis_job(
+            job_id, status="failed", phase="failed",
+            message="Analysis failed; see server logs for details.",
+            error="Analysis failed",
+        )
+    finally:
+        _remove_temporary_file(apk_path)
+
+
+@app.post("/api/analysis-jobs", status_code=202)
+async def create_analysis_job(file: UploadFile = File(...)):
+    """Queue an APK analysis and return immediately with a persistent job ID."""
+    if not static_analyzer.engine_available():
+        raise HTTPException(503, "Static-analysis engine is not available")
+    filename = file.filename or ""
+    if not filename.lower().endswith(".apk"):
+        raise HTTPException(400, "Please upload a .apk file")
+    if db.count_active_analysis_jobs() >= analysis_service.queue_limit:
+        raise HTTPException(429, "Analysis queue is full; try again after a job completes")
+
+    apk_path = None
+    handed_to_worker = False
+    try:
+        apk_path, _size = await _spool_upload(file)
+        job = db.create_analysis_job(
+            filename, active_limit=analysis_service.queue_limit,
+        )
+        if not job:
+            raise HTTPException(429, "Analysis queue is full; try again after a job completes")
+        task = asyncio.create_task(_run_analysis_job(job["id"], apk_path, filename))
+        _analysis_job_tasks.add(task)
+        task.add_done_callback(_analysis_job_tasks.discard)
+        handed_to_worker = True
+        return {
+            **job,
+            "status_url": f"/api/analysis-jobs/{job['id']}",
+        }
+    except BaseException:
+        if not handed_to_worker:
+            _remove_temporary_file(apk_path)
+        raise
+
+
+@app.get("/api/analysis-jobs/{job_id}")
+def analysis_job(job_id: str):
+    job = db.get_analysis_job(job_id)
+    if not job:
+        raise HTTPException(404, "Analysis job not found")
+    if job.get("sample_id"):
+        job["result_url"] = f"/api/samples/{job['sample_id']}"
+    return job
 
 
 @app.post("/api/agent/investigate/{sample_id}")
@@ -301,12 +402,12 @@ async def investigate_sample(sample_id: str):
     return {"id": sample_id, "agentic": investigation, "report": refreshed_report}
 
 
-_workflow_progress: dict[str, dict] = {}
-
-
 def _set_workflow_progress(sample_id: str, phase: str, message: str, *, reset: bool = False, **details):
-    state = {"active": True, "phase": phase, "events": []} if reset else _workflow_progress.get(
-        sample_id, {"active": True, "phase": phase, "events": []},
+    state = (
+        {"active": True, "phase": phase, "events": []}
+        if reset
+        else db.get_workflow_progress(sample_id)
+        or {"active": True, "phase": phase, "events": []}
     )
     event = {
         "phase": str(phase)[:50], "message": str(message)[:300],
@@ -319,7 +420,7 @@ def _set_workflow_progress(sample_id: str, phase: str, message: str, *, reset: b
     state["active"] = phase not in {"completed", "failed"}
     state.setdefault("events", []).append(event)
     state["events"] = state["events"][-40:]
-    _workflow_progress[sample_id] = state
+    db.save_workflow_progress(sample_id, state)
 
 
 def _agent_progress_callback(sample_id: str):
@@ -349,7 +450,9 @@ async def agent_workflow_status(sample_id: str):
     return {
         "id": sample_id,
         "workflow": workflow_summary,
-        "progress": _workflow_progress.get(sample_id, {"active": False, "phase": "idle", "events": []}),
+        "progress": db.get_workflow_progress(sample_id) or {
+            "active": False, "phase": "idle", "events": [],
+        },
     }
 
 
@@ -641,17 +744,18 @@ async def dynamic_analyze(
         package, main_activity = _apk_identity(tmp_path)
         if not package:
             raise HTTPException(400, "Could not read package name — not a valid APK?")
-        result = await run_in_threadpool(
-            dyn_sandbox.run_dynamic,
-            tmp_path,
-            package,
-            main_activity,
-            duration=duration,
-            use_frida=use_frida,
-            serial=target_serial,
-            use_ui_agent=use_ui_agent,
-            ui_agent_mode=ui_agent_mode,
-        )
+        async with _dynamic_analysis_lock:
+            result = await run_in_threadpool(
+                dyn_sandbox.run_dynamic,
+                tmp_path,
+                package,
+                main_activity,
+                duration=duration,
+                use_frida=use_frida,
+                serial=target_serial,
+                use_ui_agent=use_ui_agent,
+                ui_agent_mode=ui_agent_mode,
+            )
         result["filename"] = file.filename
         result["main_activity"] = main_activity
         return JSONResponse(result)
@@ -667,8 +771,11 @@ async def dynamic_analyze(
 
 
 @app.get("/api/samples")
-def samples():
-    return {"samples": db.list_samples()}
+def samples(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    return {"samples": db.list_samples(limit=limit, offset=offset)}
 
 
 @app.get("/api/samples/{sample_id}")

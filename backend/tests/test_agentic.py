@@ -467,9 +467,28 @@ class AgentWorkflowPolicyTests(unittest.TestCase):
 
 
 class AgentWorkflowApiTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.progress = {}
+        self._progress_getter = patch.object(
+            main.db, "get_workflow_progress",
+            side_effect=lambda sample_id: copy.deepcopy(self.progress.get(sample_id)),
+        )
+        self._progress_saver = patch.object(
+            main.db, "save_workflow_progress",
+            side_effect=lambda sample_id, state: self.progress.__setitem__(
+                sample_id, copy.deepcopy(state),
+            ),
+        )
+        self._progress_getter.start()
+        self._progress_saver.start()
+
+    def tearDown(self):
+        self._progress_saver.stop()
+        self._progress_getter.stop()
+
     async def test_status_endpoint_returns_bounded_live_progress(self):
         analysis = _analysis()
-        main._workflow_progress["case123"] = {
+        self.progress["case123"] = {
             "active": True, "phase": "model_wait", "events": [{
                 "phase": "tool_selected", "message": "Selected read-only tool",
                 "action": "inspect_permissions", "reason": "Verify capability",

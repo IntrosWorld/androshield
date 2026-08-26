@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 import tempfile
+import time
 import unittest
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
@@ -349,6 +350,25 @@ class PartialAnalysisTests(unittest.TestCase):
 
 
 class RobustnessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_startup_cleanup_removes_only_stale_owned_uploads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            owned = os.path.join(directory, f"{main.TEMP_UPLOAD_PREFIX}old.apk")
+            recent = os.path.join(directory, f"{main.TEMP_UPLOAD_PREFIX}recent.apk")
+            foreign = os.path.join(directory, "someone-else.apk")
+            for path in (owned, recent, foreign):
+                with open(path, "wb") as stream:
+                    stream.write(b"test")
+            old_time = time.time() - main.TEMP_UPLOAD_MAX_AGE_SECONDS - 60
+            os.utime(owned, (old_time, old_time))
+            os.utime(foreign, (old_time, old_time))
+
+            with patch.object(main.tempfile, "gettempdir", return_value=directory):
+                main._remove_stale_temporary_uploads()
+
+            self.assertFalse(os.path.exists(owned))
+            self.assertTrue(os.path.exists(recent))
+            self.assertTrue(os.path.exists(foreign))
+
     async def test_upload_is_streamed_and_bounded(self):
         original_limit = main.MAX_UPLOAD_MB
         main.MAX_UPLOAD_MB = 1

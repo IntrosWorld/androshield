@@ -209,9 +209,18 @@ The suite runs in seconds and needs no network, no device, and no API keys.
 | Agent | 10–120 s | Local model; bounded by the step/time budgets |
 
 Tuning notes: reduce `MAX_UPLOAD_MB` to reject huge samples earlier; keep
-`AGENT_AUTO_RUN=false` so interactive analyses stay fast and investigations are explicit;
-raise uvicorn workers for concurrency — analysis is CPU-bound, and SQLite writes here are
-short and infrequent.
+`AGENT_AUTO_RUN=false` so interactive analyses stay fast and investigations are explicit.
+`STATIC_ANALYSIS_CONCURRENCY` bounds CPU-heavy pipelines per server process (default 2),
+and `STATIC_ANALYSIS_QUEUE_LIMIT` rejects excess work instead of allowing unbounded
+temporary uploads. Emulator analysis is serialized because one AVD cannot safely run two
+malware samples at once.
+
+SQLite runs in WAL mode with a five-second busy timeout, indexes for history/hash lookup,
+and bounded pagination. Analysis-job and Agentic Investigation progress are persisted;
+queued/running jobs become explicit interrupted failures after a restart. These changes
+improve a local or small-team deployment, but process-local worker limits are not a
+distributed queue: use PostgreSQL plus Redis/Celery-style workers before horizontally
+scaling multiple API replicas.
 
 ---
 

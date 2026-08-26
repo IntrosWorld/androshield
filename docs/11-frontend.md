@@ -160,7 +160,7 @@ VirusTotal panel means "clean" or "no API key" — the badge says which.
 | Action | Call | Result |
 |---|---|---|
 | Drop / browse a file | — | `setFile()` validates `.apk`, enables the button |
-| Analyze | `POST /api/analyze` | Loading state → `render()` → history refresh |
+| Analyze | `POST /api/analysis-jobs`, then poll job | Phase-aware loading state → stored sample → history refresh |
 | Click a history row | `GET /api/samples/{id}` | Re-renders the stored result |
 | Download PDF / CSV / JSON | `GET …/report.pdf`, `…/iocs.csv`, `…/iocs.json` | Browser download |
 | Run AI Review | `POST /api/agent/investigate/{id}` | `renderAgent()` with grounded hypotheses + audit |

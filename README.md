@@ -5,6 +5,8 @@ suspicious APIs, IOCs, obfuscation) → transparent **rule-based risk score** �
 investigation report → PDF export. Built for banking-fraud / SOC first-level triage.
 
 > The default `/api/analyze` pipeline is **strictly static** and never executes an APK.
+> The dashboard submits that pipeline as a persisted background job, with bounded
+> concurrency and phase-aware progress; `/api/analyze` remains compatible for API users.
 > Runtime analysis is a separate, explicit `/api/dynamic` action that targets an attached
 > isolated emulator only.
 

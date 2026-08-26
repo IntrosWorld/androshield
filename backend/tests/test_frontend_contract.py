@@ -171,6 +171,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('button.classList.toggle("btn-busy", busy)', JS)
         self.assertGreaterEqual(JS.count("setButtonBusy("), 7)
 
+    def test_static_analysis_uses_persisted_background_jobs(self):
+        self.assertIn('fetch(`${API}/api/analysis-jobs`', JS)
+        self.assertIn("async function waitForAnalysisJob", JS)
+        self.assertIn("ANALYSIS_PHASE_LABELS", JS)
+        self.assertIn("completed.sample_id", JS)
+
     def test_populated_results_use_the_analyst_workspace(self):
         for element_id in (
             "overview",
