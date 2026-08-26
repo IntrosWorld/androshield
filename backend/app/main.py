@@ -182,6 +182,7 @@ def health():
             "limit": analysis_service.queue_limit,
             "active_jobs": db.count_active_analysis_jobs(),
         },
+        "database": db.database_health(),
         "dynamic_capacity": {
             "limit": 1,
             "active": int(_dynamic_analysis_lock.locked()),
@@ -334,14 +335,16 @@ async def create_analysis_job(file: UploadFile = File(...)):
     filename = file.filename or ""
     if not filename.lower().endswith(".apk"):
         raise HTTPException(400, "Please upload a .apk file")
-    if db.count_active_analysis_jobs() >= analysis_service.queue_limit:
+    active_jobs = await run_in_threadpool(db.count_active_analysis_jobs)
+    if active_jobs >= analysis_service.queue_limit:
         raise HTTPException(429, "Analysis queue is full; try again after a job completes")
 
     apk_path = None
     handed_to_worker = False
     try:
         apk_path, _size = await _spool_upload(file)
-        job = db.create_analysis_job(
+        job = await run_in_threadpool(
+            db.create_analysis_job,
             filename, active_limit=analysis_service.queue_limit,
         )
         if not job:
@@ -435,7 +438,7 @@ def _agent_progress_callback(sample_id: str):
 
 @app.get("/api/agent/workflow/{sample_id}/status")
 async def agent_workflow_status(sample_id: str):
-    saved = db.get_sample(sample_id)
+    saved = await run_in_threadpool(db.get_sample, sample_id)
     if not saved:
         raise HTTPException(404, "Sample not found")
     workflow = (saved.get("analysis") or {}).get("agentic_workflow") or {}

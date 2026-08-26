@@ -95,7 +95,7 @@ iit_hyd/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                 FastAPI app: routing, upload spooling, orchestration
-│   │   ├── db.py                   SQLite persistence (stdlib sqlite3 only)
+│   │   ├── db.py                   PostgreSQL + local SQLite persistence
 │   │   ├── report.py               ReportLab PDF renderer
 │   │   │
 │   │   ├── analyzer/               ── STATIC ANALYSIS CORE ──
@@ -357,7 +357,7 @@ The complete field-by-field contract is in [10 — API Reference](10-api-referen
 |---|---|---|
 | **androguard** | apktool / jadx | Pure Python — no JDK, one `pip install`, slim container |
 | **FastAPI + uvicorn** | Flask, Django | Native async, automatic OpenAPI, first-class `UploadFile` streaming |
-| **SQLite** | PostgreSQL | Zero setup; a triage tool should run from a single command. The DB layer is small enough to swap later. |
+| **PostgreSQL with SQLite fallback** | PostgreSQL-only | PostgreSQL provides multi-user writes, pooled connections, and shared queue admission in deployments; SQLite preserves the one-command local demo. |
 | **Static SPA (no build step)** | React/Vue + bundler | The dashboard is served by the same process with no `npm install`, keeping the demo reproducible |
 | **Rule engine as the scorer** | End-to-end ML | Explainability is a hard requirement for a fraud desk. ML contributes at most 20 capped points. |
 | **Ollama as default agent provider** | Cloud-only | Evidence stays on the analyst's machine by default; cloud review is explicit opt-in |

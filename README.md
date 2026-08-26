@@ -214,7 +214,7 @@ AGENT_OLLAMA_FALLBACK=false
 The dashboard settings button in the top-right can change these values without
 editing `.env`. It also controls the external-service gate, OpenRouter, Gemini and
 VirusTotal credentials, runtime budgets, hosted/local models, and local GGUF import.
-Settings are persisted in the local SQLite database and the settings API is restricted
+Settings are persisted in the selected PostgreSQL/SQLite database and the settings API is restricted
 to loopback clients. Secret values are never returned to the browser after saving.
 
 Large runtime features are optional downloads rather than part of the base package.
@@ -423,12 +423,27 @@ Analyzing malware in a container keeps it off your host (plan §14). All deps sh
 manylinux wheels, so the build needs no compiler:
 
 ```bash
-GEMINI_API_KEY=... VT_API_KEY=... docker compose up --build
+POSTGRES_PASSWORD=choose-a-strong-password docker compose up --build
 ```
-Dashboard on http://localhost:8000; the SQLite history persists in `backend/data/`.
+Dashboard on http://localhost:8000; Compose starts PostgreSQL and persists it in the
+named `postgres-data` volume. Gemini, OpenRouter, and VirusTotal remain optional.
+
+For a local one-command run, leave `DATABASE_URL` unset and SQLite is used automatically.
+For Neon or another hosted PostgreSQL service, copy its pooled connection string into
+`DATABASE_URL` in `backend/.env` (keep `sslmode=require`). To import existing SQLite
+history, preview and then run:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe tools\migrate_sqlite_to_postgres.py --target $env:DATABASE_URL --dry-run
+.\.venv\Scripts\python.exe tools\migrate_sqlite_to_postgres.py --target $env:DATABASE_URL
+```
+
+Persisted runtime settings may include API secrets and are therefore excluded by default;
+add `--include-runtime-settings` only when that transfer is intentional.
 
 ## Tech
-FastAPI · androguard (pure-Python, no Java/apktool/JADX needed) · Gemini · SQLite ·
+FastAPI · androguard (pure-Python, no Java/apktool/JADX needed) · Gemini · PostgreSQL/SQLite ·
 reportlab · vanilla JS + Tailwind + Chart.js dashboard.
 
 ## Project layout
@@ -438,7 +453,7 @@ backend/app/
   analyzer/            static analysis + scoring
   dynamic/ui_agent.py bounded synthetic-data Android UI exploration
   genai/gemini_client  LLM report (+ template fallback)
-  db.py  report.py     SQLite + PDF
+  db.py  report.py     PostgreSQL/SQLite adapter + PDF
 frontend/              index.html + app.js (served by FastAPI)
 plan.md                full product vision
 AGENTIC_AI_PLAN.md     bounded local-Ollama + optional-Gemini investigation plan

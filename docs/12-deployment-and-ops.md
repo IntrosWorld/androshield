@@ -215,12 +215,17 @@ and `STATIC_ANALYSIS_QUEUE_LIMIT` rejects excess work instead of allowing unboun
 temporary uploads. Emulator analysis is serialized because one AVD cannot safely run two
 malware samples at once.
 
-SQLite runs in WAL mode with a five-second busy timeout, indexes for history/hash lookup,
-and bounded pagination. Analysis-job and Agentic Investigation progress are persisted;
-queued/running jobs become explicit interrupted failures after a restart. These changes
-improve a local or small-team deployment, but process-local worker limits are not a
-distributed queue: use PostgreSQL plus Redis/Celery-style workers before horizontally
-scaling multiple API replicas.
+Set `DATABASE_URL` to use PostgreSQL/Neon; otherwise SQLite remains the automatic local
+fallback. PostgreSQL uses pooled, pre-pinged connections and an advisory transaction lock
+to make analysis queue admission atomic across API processes. SQLite retains WAL mode and
+a five-second busy timeout. Both backends keep indexes, bounded pagination, analysis jobs,
+and Agentic Investigation progress. A new API worker recovers only stale job leases, so it
+does not fail work still running in another process.
+
+PostgreSQL removes the single-writer database bottleneck, but the analysis semaphore is
+still process-local. Before horizontally scaling API replicas, move execution to a real
+worker queue (Redis/Celery, Dramatiq, or equivalent); PostgreSQL remains the source of
+truth for job state, not the task broker.
 
 ---
 
@@ -250,7 +255,7 @@ This is a hackathon/triage platform. Before any real deployment:
 | Area | Required change |
 |---|---|
 | **Authentication** | There is none. Add auth before exposing it beyond localhost. |
-| **Database** | SQLite is single-writer. Move to PostgreSQL for concurrent analysts; `db.py` is deliberately small. |
+| **Database** | Use PostgreSQL via `DATABASE_URL` for concurrent analysts. SQLite is intended only for local/single-user mode. |
 | **Sample storage** | APKs are deleted after analysis. If you need retention, store them encrypted, access-controlled, and clearly marked. |
 | **Rate limiting** | None. Analysis is CPU-expensive and trivially abusable. |
 | **CORS** | Keep it restricted; the permissive default is for localhost development. |

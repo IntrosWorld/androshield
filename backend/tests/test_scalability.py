@@ -78,12 +78,45 @@ class SqliteScalabilityTests(unittest.TestCase):
             message="Running",
         )
 
+        # Simulate a worker lease that stopped receiving progress updates.
+        with db._conn() as connection:
+            connection.execute(
+                db.analysis_jobs.update().where(db.analysis_jobs.c.id == job["id"]).values(
+                    updated_at=time.time() - db.ANALYSIS_JOB_STALE_SECONDS - 1
+                )
+            )
+
         db.init_db()
 
         recovered = db.get_analysis_job(job["id"])
         self.assertEqual("failed", recovered["status"])
         self.assertEqual("interrupted", recovered["phase"])
         self.assertEqual(0, db.count_active_analysis_jobs())
+
+    def test_recent_job_is_not_failed_when_another_worker_starts(self):
+        job = db.create_analysis_job("live.apk")
+
+        db.init_db()
+
+        self.assertEqual("queued", db.get_analysis_job(job["id"])["status"])
+
+    def test_database_health_does_not_expose_connection_details(self):
+        health = db.database_health()
+        self.assertEqual("sqlite", health["backend"])
+        self.assertTrue(health["reachable"])
+        self.assertGreaterEqual(health["latency_ms"], 0)
+
+    def test_hosted_postgres_url_selects_psycopg_without_connecting(self):
+        with patch.dict(os.environ, {
+            "DATABASE_URL": "postgresql://user:password@example.invalid/app?sslmode=require",
+        }):
+            normalized = db._database_url()
+            engine = db._make_engine(normalized)
+        try:
+            self.assertTrue(normalized.startswith("postgresql+psycopg://"))
+            self.assertEqual("postgresql", engine.dialect.name)
+        finally:
+            engine.dispose()
 
 
 class CapacityTests(unittest.TestCase):

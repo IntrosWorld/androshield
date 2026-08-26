@@ -42,6 +42,7 @@ to check when something behaves unexpectedly.
   "apkid_available": true,
   "ml_model_loaded": false,
   "analyzer_ready": true,
+  "database": {"backend": "postgresql", "reachable": true, "latency_ms": 18.4},
   "dynamic": {"available": false, "reason": "...", "devices": []},
   "frida_available": true,
   "agentic": {
@@ -59,6 +60,9 @@ to check when something behaves unexpectedly.
 
 The agent block here uses `check_provider=False` — it reports **configuration** without
 paying the latency of an Ollama round-trip.
+
+`database.backend` is `postgresql` when `DATABASE_URL` is configured and `sqlite` for
+the zero-setup local fallback. Connection credentials are never returned.
 
 ---
 
