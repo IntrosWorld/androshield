@@ -92,6 +92,25 @@ def build_evidence(analysis: dict) -> dict:
     for score_item in source.get("score_breakdown", []) or []:
         add("score", score_item.get("category"), score_item.get("detail", "Risk contribution"), score_item)
 
+    # Closed-loop workflow observations contain bounded parser output only. Raw APKs,
+    # logcat streams, screenshots, and host/device paths are never placed in the graph.
+    workflow = source.get("agentic_workflow") or {}
+    for observation in workflow.get("observations", []) or []:
+        runtime_view = {
+            key: observation.get(key)
+            for key in (
+                "id", "action_id", "action_kind", "ran", "duration", "dynamic_score",
+                "runtime_signals", "network", "frida", "ui_agent", "crash_count",
+                "reason", "timestamp",
+            )
+            if key in observation
+        }
+        add(
+            "runtime", observation.get("id"),
+            f"Approved {observation.get('action_kind', 'sandbox')} observation",
+            runtime_view,
+        )
+
     index: dict[str, int] = {}
     for item in items:
         index[item["kind"]] = index.get(item["kind"], 0) + 1

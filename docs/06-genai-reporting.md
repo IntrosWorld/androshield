@@ -55,11 +55,8 @@ evidence can actually support.
 def _evidence_assessment(analysis) -> tuple[str, str]:
     if not analysis.get("valid_apk", True) or analysis.get("risk_score") is None:
         return "Inconclusive", "analysis did not complete"
-    malicious = virustotal.file.malicious if found else 0
-    if malicious >= 5:
-        return "Confirmed Malicious", f"{malicious} VirusTotal engines reported malicious"
     if severity in ("High", "Critical"):
-        return "Likely Malicious", "high-confidence heuristic/corroborated evidence"
+        return "Likely Malicious", "high-confidence locally extracted evidence"
     if analysis.get("analysis_quality") == "partial":
         return "Inconclusive", "partial analysis; DEX control-flow could not be recovered"
     if severity == "Medium":
@@ -71,7 +68,7 @@ def _evidence_assessment(analysis) -> tuple[str, str]:
 
 | Verdict | Reachable how |
 |---|---|
-| **Confirmed Malicious** | **Only** ≥5 independent VirusTotal engines. Unreachable by our own heuristics at any score. |
+| **Confirmed Malicious** | Reserved for future locally observed, independently verified runtime evidence; not emitted by the static endpoint today. |
 | Likely Malicious | Severity High or Critical |
 | Suspicious | Severity Medium |
 | Inconclusive | Analysis failed, or DEX control-flow unrecoverable |

@@ -9,8 +9,8 @@ for the dev workflow.
 - Static analysis via **androguard** (pure-Python, no Java deps): manifest, permissions,
   suspicious APIs, URL/IP/keyword IOCs, obfuscation signals
 - Transparent rule-based **risk score** with per-reason breakdown
-- Optional **VirusTotal** corroboration (`intel/virustotal.py`) — folds real multi-engine
-  detections into the score; silent no-op without `VT_API_KEY`
+- Optional **VirusTotal** corroboration (`intel/virustotal.py`) — displayed separately
+  and never changes the local score/verdict; silent no-op without `VT_API_KEY`
 - **YARA** signature scanning (`analyzer/yara_scan.py` + `rules/android_fraud.yar`) and
   **MITRE ATT&CK** Mobile mapping (`analyzer/mitre.py`) — both offline
 - **APKiD** packer/compiler/anti-analysis fingerprint (`intel/apkid_scan.py`)

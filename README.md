@@ -135,20 +135,53 @@ C2 domains + IP, a fake Telegram bot token, banking keywords, obfuscation signal
 
 Set `VT_API_KEY` in `.env` (free key: https://www.virustotal.com/gui/my-apikey — 4 req/min,
 500/day). The analyzer then looks up the APK's SHA256 + extracted domains against VirusTotal,
-shows real multi-engine detections, and folds them into the risk score (a confirmed
-multi-engine hit floors severity at High/Critical). With no key it's a silent no-op.
+and shows the returned multi-engine detections as a separate corroboration panel. These
+results never change the platform's own risk score, severity, or verdict. With no key
+it is a silent no-op.
 
-### Bounded agentic investigation (optional)
+### AndroZoo evaluation sampling (research access)
 
-The agent can autonomously select and sequence server-defined evidence tools after the
+AndroZoo is used for an independent, hash-pinned evaluation batch rather than silently
+mixed into training. Put the personal key in `backend/.env` as `ANDROZOO_API_KEY`, never
+commit it, and keep downloaded APKs inside the ignored `test/` directory.
+
+```powershell
+# The official nightly metadata is more than 2.7 GB compressed; download is resumable.
+backend\.venv\Scripts\python.exe backend\tools\androzoo_pipeline.py fetch-metadata `
+  --output test\androzoo\latest.csv.gz
+
+# Deterministically choose a weak-label stress-test batch (not training ground truth).
+backend\.venv\Scripts\python.exe backend\tools\androzoo_pipeline.py select `
+  --metadata test\androzoo\latest.csv.gz `
+  --manifest test\androzoo\evaluation-manifest.csv --benign 20 --malicious 20
+
+# Four workers stays well below AndroZoo's requested concurrency ceiling.
+backend\.venv\Scripts\python.exe backend\tools\androzoo_pipeline.py download `
+  --manifest test\androzoo\evaluation-manifest.csv `
+  --output test\androzoo\apks --workers 4
+```
+
+Every APK is written under its candidate label only after its SHA256 and metadata size
+match. `vt_detection=0` is a sampling rule, not proof that an app is benign; manifests
+retain scan dates and must be manually reviewed before any final accuracy claim. The
+tool never installs or executes an APK. This batch measures cross-dataset behaviour only;
+the primary model must be trained and evaluated with dataset-provided family/benign labels.
+
+To resume all three stages and continue automatically, run
+`powershell -ExecutionPolicy Bypass -File scripts\run_androzoo_evaluation.ps1`.
+
+### AI Review (optional)
+
+AI Review can select and sequence server-defined read-only evidence tools after the
 static score is complete. Its automatic tools are read-only: manifest, permissions,
 suspicious APIs, network indicators, signatures, attack surface, and score rationale.
 Requests for external intelligence or emulator execution are recorded as
 `approval_required` and are never executed by the agent. The model has no shell,
 arbitrary filesystem, arbitrary HTTP, raw APK, or score-writing capability.
 
-The recommended local model is `qwen3:8b`; Gemini can instead act as the planner with
-`AGENT_PROVIDER=gemini`, or review local hypotheses when `AGENT_GEMINI_REVIEW=true`.
+The recommended local model is `qwen3:8b`. OpenRouter can host the same open-weight
+model family when local hardware is limited; Gemini can instead act as the planner or
+review local hypotheses when `AGENT_GEMINI_REVIEW=true`.
 
 ```powershell
 # One-time model installation (Ollama is already configured separately):
@@ -163,9 +196,22 @@ AGENT_MAX_STEPS=8
 AGENT_MAX_TOOL_CALLS=4
 ```
 
+For hosted open-weight inference, keep the API key private and require OpenRouter's
+zero-data-retention routing. The listed Qwen endpoint is low-cost and paid; free model
+availability and privacy-compatible routing fluctuate, so select a currently available
+free model explicitly when prototyping without credits.
+
+```powershell
+AGENT_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-v1-your-key
+OPENROUTER_MODEL=qwen/qwen3-30b-a3b-instruct-2507
+OPENROUTER_ZDR=true
+AGENT_OLLAMA_FALLBACK=false
+```
+
 The dashboard settings button in the top-right can change these values without
-editing `.env`. It also controls the external-service gate, Gemini and VirusTotal
-credentials, runtime budgets, the Ollama endpoint and model, and local GGUF import.
+editing `.env`. It also controls the external-service gate, OpenRouter, Gemini and
+VirusTotal credentials, runtime budgets, hosted/local models, and local GGUF import.
 Settings are persisted in the local SQLite database and the settings API is restricted
 to loopback clients. Secret values are never returned to the browser after saving.
 
@@ -178,7 +224,7 @@ continue in the backend if the browser or Settings dialog is closed. CIC, AndroZ
 Drebin research datasets are deliberately excluded from end-user downloads.
 
 With automatic mode off, analyze and save an APK first, then use the dashboard's
-**Run AI Investigation** button or `POST /api/agent/investigate/{sample_id}`. Provider
+**Run AI Review** button or `POST /api/agent/investigate/{sample_id}`. Provider
 status is available from `GET /api/agent/health`. CPU-only inference may take several
 minutes, so execution is moved to a worker thread and does not block FastAPI's event
 loop. A harmless live smoke test is available:
@@ -189,15 +235,46 @@ $env:AGENT_ENABLED="true"
 .venv\Scripts\python.exe -u tools\smoke_agent.py
 ```
 
+The genuinely agentic component is the additional experimental **Agentic Investigation**,
+which can be enabled without changing AI Review or the manual sandbox:
+
+```powershell
+AGENT_WORKFLOW_ENABLED=true
+```
+
+Starting it creates a pending baseline proposal only. Each pass requires explicit user
+approval, a re-upload whose SHA256 matches the stored case, and an attached dedicated
+Android sandbox. The server—not the model or browser—selects one of four fixed actions:
+baseline observation, Frida instrumentation, UI-tree exploration, or vision-assisted UI
+exploration. Bounded runtime observations are fed back into the read-only evidence agent,
+which may justify at most one next action. Raw APK bytes, logcat, screenshots, and device
+paths are not stored in the workflow or sent to the evidence model. The deterministic
+static score and severity remain locked. See
+[`docs/07-agentic-investigation.md`](docs/07-agentic-investigation.md#13-optional-agentic-investigation-workflow).
+
+The Agentic Investigation card includes a live activity feed for sandbox phases,
+selected read-only tools, the model's stated action rationale, evidence counts, policy
+rejections, and the final stop/continue decision. It intentionally does not display
+private model chain-of-thought. **Allow visual-model follow-up** is selected in that card
+before starting a new workflow; global availability remains controlled by Settings →
+**Allow screenshot vision**. The per-workflow choice is then locked and the model cannot
+enable vision on its own.
+
 The risk score remains deterministic and is checked for immutability before and after
 every agent run. Full design and threat controls are documented in
 [`AGENTIC_AI_PLAN.md`](AGENTIC_AI_PLAN.md).
 
 ### Machine-learning classifier (optional)
 
-A permission-based RandomForest can provide a corroborating malware probability. No
-model is trusted or enabled by default; train a demo model only to smoke-test the wiring,
-then replace it with a versioned model trained and evaluated on real data:
+The bundled `apk_static_model.joblib` is the 410-feature RandomForest trained from 500
+CICMalDroid Banking and 500 CICMalDroid Benign APKs. Live inference uses the same
+permissions, APIs, manifest/component counts, certificate flags, obfuscation, YARA,
+APKiD, and IOC-shape fields used during extraction. `APK_STATIC_MODEL_PATH` can point to
+another compatible artifact; the older permission-only `model.pkl` remains a fallback.
+
+The model is a supporting local signal and cannot clear an APK. A probability below its
+validated threshold is `not_flagged`, never proof of benignness. To rebuild the older
+permission-only baseline:
 
 ```powershell
 # 1) Smoke-test the pipeline with synthetic data (no download):
@@ -218,9 +295,9 @@ then replace it with a versioned model trained and evaluated on real data:
 ```
 
 `train.py` prints precision/recall/F1/ROC-AUC on a held-out split and saves the model +
-fitted permission vocabulary + metrics. The classifier is a silent no-op if no
-`model.pkl` is present. **Caveat:** Drebin is ~2014-era, so treat the ML output as a
-corroborating signal (concept drift), not a sole verdict.
+fitted permission vocabulary + metrics. The classifier is a silent no-op if neither
+model artifact is present. **Caveat:** cross-dataset drift still applies, so ML is never
+the sole verdict.
 
 For CICMalDroid training, the saved bundle selects a conservative alert threshold on
 the held-out split (minimum 98% benign specificity). A probability below that threshold
@@ -289,7 +366,45 @@ running services, network endpoints** → uninstalls, and produces a dynamic-beh
 score. Tick **Frida hooks** for live API interception (SMS sends, HTTP URLs,
 `DexClassLoader`, `Runtime.exec`, clipboard, crypto) — needs `frida-server` on the
 emulator (the app shows setup steps if it's not). Endpoint: `POST /api/dynamic`
-(`file`, `duration`, `use_frida`, `serial`).
+(`file`, `duration`, `use_frida`, `use_ui_agent`, `serial`).
+
+### AI UI Explorer (optional)
+
+Set `UI_AGENT_ENABLED=true`, keep the dedicated `FraudSandbox` AVD running, then tick
+**AI UI Explorer** for a dynamic-analysis pass. Ollama or OpenRouter reads a
+sanitized accessibility-tree view and may choose only bounded tap, synthetic-text,
+back, wait, or finish actions. The default fast UI model is `qwen3:1.7b`; configure it
+independently with `UI_AGENT_PROVIDER` and `UI_AGENT_MODEL`.
+
+Optional screenshot-guided fallback is available with `UI_AGENT_VISION_ENABLED=true`
+and a vision-capable model. OpenRouter can use `qwen/qwen3-vl-8b-instruct`; local
+Ollama can use `qwen3-vl:2b-instruct` as the CPU-friendly default, while
+`qwen3-vl:4b` provides more capacity on a faster machine. Accessibility node actions
+remain preferred. Visual taps use validated normalized coordinates, are restricted to
+the foreground target app and safe screen margins, and appear in the action audit;
+screenshots stay in memory and are not written to reports or the database.
+For CPU inference, `UI_AGENT_IMAGE_MAX_EDGE=384` bounds the in-memory model image while
+coordinate mapping continues to use the original device dimensions.
+Vision turns use schema-validated JSON actions instead of Ollama native tools because
+current Qwen3-VL native-tool requests can stall; both paths share the same policy gate.
+Qwen's native 0–1000 GUI-coordinate form is normalized to audited percentages before
+the safe-margin and foreground-package checks run.
+
+The UI agent:
+
+- receives element IDs, never raw screen coordinates;
+- can type only server-generated fake identity fields (the reserved
+  `example.invalid` email domain is used and passwords are redacted from results);
+- blocks payment, purchase, transfer, call, install, delete, and external-navigation
+  actions;
+- retreats if an app control opens another package;
+- refuses every target except the named `FraudSandbox` AVD and keeps a complete audit;
+- is a separate pass from Frida so the two control loops cannot conflict.
+
+An emulator reduces host exposure but does not make malware harmless. Keep the AVD
+disposable, isolated from personal accounts/files, and reset it after testing. Apps
+that render inaccessible custom canvases/WebViews may expose no actionable nodes; in
+that case the agent stops instead of guessing coordinates.
 
 > The synthetic `test_fakebank.apk` is unsigned with no real code — it won't
 > install/run, so it's for **static** testing only. Use a real sample for dynamic, and
@@ -319,6 +434,7 @@ reportlab · vanilla JS + Tailwind + Chart.js dashboard.
 backend/app/
   main.py              FastAPI routes + static serving
   analyzer/            static analysis + scoring
+  dynamic/ui_agent.py bounded synthetic-data Android UI exploration
   genai/gemini_client  LLM report (+ template fallback)
   db.py  report.py     SQLite + PDF
 frontend/              index.html + app.js (served by FastAPI)

@@ -3,7 +3,8 @@
 > Implementation status: the bounded orchestrator, Ollama/Gemini providers, evidence
 > graph, policy enforcement, audit trail, API/dashboard integration, persistence,
 > optional Gemini review, PDF output, automated tests, and live Ollama smoke test are
-> implemented on branch `exp-2-agentic`.
+> implemented on branch `exp-2-agentic`. Bounded Android UI exploration is also
+> implemented as a separately enabled dynamic-analysis tier.
 
 ## Decision
 
@@ -82,6 +83,15 @@ Every action response must match one of these shapes:
 
 Dynamic analysis remains a separate, explicit workflow and may run only in the isolated
 AVD. The static `/api/analyze` route never executes the sample.
+
+The optional UI agent is stricter still: it is locked to the named sandbox AVD and
+prefers element IDs from a sanitized accessibility tree. When explicitly enabled, an
+in-memory, downscaled screenshot allows a vision-capable Ollama model to target controls
+that are absent from the tree using normalized coordinates. Those coordinates must stay
+inside safe screen margins and are accepted only while the target package is foreground.
+It may type only fields from a generated synthetic identity. High-impact actions and any
+transition to another package are blocked/contained and audited. Screenshots are not
+persisted, and the UI agent never shares a pass with the Frida controller.
 
 ## Security and robustness controls
 

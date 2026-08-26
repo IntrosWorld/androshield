@@ -35,7 +35,7 @@ weights, data structures, invariants, and failure modes that are in the code.
 |---|---|---|
 | 03 | [Architecture](03-architecture.md) | End-to-end architecture, module map, request lifecycle, trust boundaries, data model, design principles. |
 | 04 | [Static Analysis Pipeline](04-static-analysis-pipeline.md) | Every analyzer stage in depth: parsing, manifest, certificate, components, permissions, API detection, IOC extraction, obfuscation, YARA, APKiD, MITRE. Including the degradation ladder. |
-| 05 | [Risk Scoring](05-risk-scoring.md) | The scoring theory: category caps, diminishing returns, correlation chains, evidence confidence, fusion with VirusTotal and ML, severity bands. Worked examples. |
+| 05 | [Risk Scoring](05-risk-scoring.md) | The scoring theory: category caps, diminishing returns, correlation chains, evidence confidence, ML fusion, optional external context, and severity bands. Worked examples. |
 
 ### Part III — The intelligence layers
 | # | Document | What it covers |

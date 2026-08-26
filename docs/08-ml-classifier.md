@@ -180,7 +180,7 @@ The operational cost function is asymmetric:
 
 | Error | Cost |
 |---|---|
-| **False negative** | One malicious sample ranks lower — but the rule engine, YARA, APKiD, and VirusTotal all still score it independently. The ML layer is one of six voices. |
+| **False negative** | One malicious sample ranks lower — but the rule engine, YARA, APKiD, and sandbox evidence still score it independently. Optional VirusTotal context is displayed separately and never affects the score. |
 | **False positive** | An analyst wastes time on a clean app. Repeated, the tool loses credibility and stops being used at all. |
 
 A triage tool that cries wolf is abandoned, and an abandoned tool has zero recall. **98 %

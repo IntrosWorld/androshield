@@ -47,6 +47,27 @@ def _run(args, timeout=60, serial=None):
         return -3, "", str(e)
 
 
+def _run_bytes(args, timeout=30, serial=None):
+    """Binary-safe adb invocation used for screenshots."""
+    adb = adb_path()
+    if not adb:
+        return -2, b"", "adb not found"
+    cmd = [adb]
+    if serial:
+        cmd += ["-s", serial]
+    cmd += args
+    try:
+        p = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        data = p.stdout or b""
+        if len(data) > 12 * 1024 * 1024:
+            return -4, b"", "adb binary response exceeded 12 MB"
+        return p.returncode, data, (p.stderr or b"").decode("utf-8", "replace")
+    except subprocess.TimeoutExpired:
+        return -1, b"", f"adb timed out after {timeout}s"
+    except Exception as exc:  # pragma: no cover
+        return -3, b"", str(exc)
+
+
 def list_devices():
     """Return serials of online devices (state == 'device')."""
     rc, out, _ = _run(["devices"], timeout=15)
@@ -125,6 +146,14 @@ def pid_of(package, serial=None):
     rc, out, _ = shell(["pidof", package], serial=serial, timeout=15)
     out = out.strip()
     return out.split()[0] if out else None
+
+
+def screenshot_png(serial=None):
+    """Capture the current display as PNG bytes without writing it to disk."""
+    rc, data, err = _run_bytes(["exec-out", "screencap", "-p"], timeout=30, serial=serial)
+    if rc != 0 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return b"", err or "invalid screenshot"
+    return data, ""
 
 
 _CONSENT_LABELS = ["Wait", "Continue", "CONTINUE", "Allow", "ALLOW",

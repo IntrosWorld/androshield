@@ -295,6 +295,35 @@ Both the updated analysis and the regenerated report are persisted.
 
 ---
 
+## `POST /api/agent/workflow/{sample_id}`
+
+Starts or returns the separate approval-controlled Agentic Investigation. Starting is
+idempotent and never executes the APK. Requires `AGENT_ENABLED=true` and
+`AGENT_WORKFLOW_ENABLED=true`.
+
+```json
+{"id":"a1b2c3d4e5f6","workflow":{"status":"approval_required","proposals":[...]},
+ "agentic":{...},"report":{...}}
+```
+
+## `POST /api/agent/workflow/{sample_id}/approve`
+
+Approves exactly one pending proposal. Multipart fields are `file` (the original APK),
+`action_id`, and optional `serial`. The uploaded SHA256 must match the stored case. The
+server ignores mutable action configuration and executes its fixed policy for the
+proposal kind.
+
+```json
+{"id":"a1b2c3d4e5f6","workflow":{...},"dynamic":{...},
+ "agentic_review":{...},"report":{...}}
+```
+
+Errors include `400` for an APK hash mismatch, `404` for a missing case, and `409` for a
+disabled workflow, stale static verdict, unknown proposal, or already-completed action.
+Full controls: [07 §13](07-agentic-investigation.md#13-optional-agentic-investigation-workflow).
+
+---
+
 ## `POST /api/dynamic`
 
 > ⚠️ **This endpoint installs and runs the APK inside an attached emulator.** Read
@@ -377,6 +406,7 @@ verdict, VirusTotal, the agentic investigation, and recommendations. Downloads a
 | `CORS_ORIGINS` | localhost:8000 pair | Comma-separated allowed origins |
 | `SANDBOX_AVD` | `FraudSandbox` | AVD name for dynamic auto-selection |
 | `AGENT_ENABLED` | `false` | Master agent switch |
+| `AGENT_WORKFLOW_ENABLED` | `false` | Separate approval-controlled sandbox workflow |
 | `AGENT_AUTO_RUN` | `false` | Run the agent inline during `/api/analyze` |
 | `AGENT_PROVIDER` | `ollama` | `ollama` \| `gemini` |
 | `AGENT_MAX_STEPS` | `8` | Clamped 1–20 |

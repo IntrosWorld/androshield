@@ -3,9 +3,13 @@
 Serves both the JSON API and the static single-page dashboard so the whole demo
 runs from one `uvicorn app.main:app` process.
 """
+import asyncio
+import hashlib
+import json
 import logging
 import os
 import tempfile
+import time
 from ipaddress import ip_address
 
 from dotenv import load_dotenv
@@ -25,8 +29,9 @@ from .analyzer import static_analyzer, risk_scoring
 from .genai import gemini_client
 from .intel import virustotal, apkid_scan
 from .ml import classifier as ml_classifier
-from .dynamic import sandbox as dyn_sandbox, frida_runner
+from .dynamic import sandbox as dyn_sandbox, frida_runner, ui_agent
 from .agent import orchestrator as agent_orchestrator
+from .agent import workflow as agent_workflow
 from . import db, optional_components, report as report_pdf, runtime_settings
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
@@ -92,8 +97,12 @@ def _startup():
     db.init_db()
     runtime_settings.load_persisted()
     ready = static_analyzer.engine_available()
-    log.info("DB initialised. Gemini key present: %s | analyzer engine ready: %s",
-             runtime_settings.external_services_enabled() and bool(os.getenv("GEMINI_API_KEY")), ready)
+    log.info(
+        "DB initialised. Gemini configured: %s | OpenRouter configured: %s | analyzer ready: %s",
+        runtime_settings.external_services_enabled() and bool(os.getenv("GEMINI_API_KEY")),
+        runtime_settings.external_services_enabled() and bool(os.getenv("OPENROUTER_API_KEY")),
+        ready,
+    )
     if not ready:
         log.error("androguard is NOT importable in this interpreter — analysis will fail. "
                   "Start the server from backend/.venv (run: .\\.venv\\Scripts\\Activate.ps1).")
@@ -105,13 +114,17 @@ def health():
         "status": "ok",
         "external_api_enabled": runtime_settings.external_services_enabled(),
         "gemini_configured": runtime_settings.external_services_enabled() and bool(os.getenv("GEMINI_API_KEY", "").strip()),
+        "openrouter_configured": runtime_settings.external_services_enabled() and bool(os.getenv("OPENROUTER_API_KEY", "").strip()),
         "virustotal_configured": virustotal.is_configured(),
         "apkid_available": apkid_scan.available(),
         "ml_model_loaded": ml_classifier.available(),
+        "ml_model": ml_classifier.model_info(),
         "analyzer_ready": static_analyzer.engine_available(),
         "dynamic": dyn_sandbox.status(),
         "frida_available": frida_runner.available(),
+        "ui_agent": ui_agent.health(),
         "agentic": agent_orchestrator.agent_health(check_provider=False),
+        "agentic_workflow": agent_workflow.health(),
     }
 
 
@@ -195,8 +208,8 @@ async def analyze(file: UploadFile = File(...)):
         analysis = static_analyzer.analyze(tmp_path)
         analysis["file"]["filename"] = file.filename
 
-        # VirusTotal corroboration (no-op if VT_API_KEY unset). Done before the LLM
-        # so the report can cite real engine detections; folded into the risk score.
+        # Optional external context (no-op if VT_API_KEY is unset). It is attached for
+        # analyst visibility only and cannot modify our local score or severity.
         if analysis.get("valid_apk"):
             vt = virustotal.lookup(
                 analysis["file"].get("sha256"),
@@ -273,6 +286,263 @@ async def investigate_sample(sample_id: str):
     return {"id": sample_id, "agentic": investigation, "report": refreshed_report}
 
 
+_workflow_progress: dict[str, dict] = {}
+
+
+def _set_workflow_progress(sample_id: str, phase: str, message: str, *, reset: bool = False, **details):
+    state = {"active": True, "phase": phase, "events": []} if reset else _workflow_progress.get(
+        sample_id, {"active": True, "phase": phase, "events": []},
+    )
+    event = {
+        "phase": str(phase)[:50], "message": str(message)[:300],
+        "timestamp": time.time(),
+        **{key: value for key, value in details.items()
+           if key in {"step", "action", "reason", "status", "evidence_count",
+                      "hypothesis_count", "gap_count", "error", "force_final"}},
+    }
+    state["phase"] = event["phase"]
+    state["active"] = phase not in {"completed", "failed"}
+    state.setdefault("events", []).append(event)
+    state["events"] = state["events"][-40:]
+    _workflow_progress[sample_id] = state
+
+
+def _agent_progress_callback(sample_id: str):
+    def update(event: dict):
+        _set_workflow_progress(
+            sample_id, event.get("phase", "reviewing"),
+            event.get("message", "Review activity updated."),
+            **{key: value for key, value in event.items() if key not in {"phase", "message"}},
+        )
+    return update
+
+
+@app.get("/api/agent/workflow/{sample_id}/status")
+async def agent_workflow_status(sample_id: str):
+    saved = db.get_sample(sample_id)
+    if not saved:
+        raise HTTPException(404, "Sample not found")
+    workflow = (saved.get("analysis") or {}).get("agentic_workflow") or {}
+    workflow_summary = None if not workflow else {
+        "status": workflow.get("status"),
+        "allow_vision": bool(workflow.get("allow_vision")),
+        "proposals": [
+            {"id": item.get("id"), "kind": item.get("kind"), "status": item.get("status")}
+            for item in (workflow.get("proposals") or [])[:10]
+        ],
+    }
+    return {
+        "id": sample_id,
+        "workflow": workflow_summary,
+        "progress": _workflow_progress.get(sample_id, {"active": False, "phase": "idle", "events": []}),
+    }
+
+
+@app.post("/api/agent/workflow/{sample_id}")
+async def start_agent_workflow(sample_id: str, allow_vision: bool = False):
+    """Start the separate approval-controlled investigation workflow.
+
+    This does not execute the APK. It runs/reuses the existing read-only evidence
+    investigation and creates one pending sandbox proposal.
+    """
+    if not agent_workflow.health()["enabled"]:
+        raise HTTPException(409, "Agentic workflow is disabled; enable it in Settings")
+    if not agent_orchestrator.agent_health(check_provider=False)["enabled"]:
+        raise HTTPException(409, "AI Review must also be enabled")
+    saved = db.get_sample(sample_id)
+    if not saved:
+        raise HTTPException(404, "Sample not found")
+    analysis = saved["analysis"]
+    if not analysis.get("valid_apk") or analysis.get("risk_score") is None:
+        raise HTTPException(409, "Agentic workflow requires completed static findings")
+
+    existing = analysis.get("agentic") or {}
+    existing_workflow = analysis.get("agentic_workflow") or {}
+    if existing_workflow.get("policy_version") == agent_workflow.WORKFLOW_POLICY_VERSION:
+        return {
+            "id": sample_id,
+            "workflow": existing_workflow,
+            "agentic": existing,
+            "report": saved.get("report") or {},
+        }
+    _set_workflow_progress(
+        sample_id, "planning", "Starting Agentic Investigation planning.", reset=True,
+    )
+    if existing.get("status") == "completed":
+        investigation = existing
+    else:
+        score_before = (
+            analysis.get("risk_score"), analysis.get("severity"),
+            list(analysis.get("score_breakdown", [])),
+        )
+        investigation = await run_in_threadpool(
+            agent_orchestrator.run_investigation, analysis,
+            progress_callback=_agent_progress_callback(sample_id),
+        )
+        score_after = (
+            analysis.get("risk_score"), analysis.get("severity"),
+            list(analysis.get("score_breakdown", [])),
+        )
+        if score_after != score_before:
+            raise HTTPException(500, "Agent scoring invariant failed")
+        investigation = gemini_client.review_investigation(analysis, investigation)
+        analysis["agentic"] = investigation
+
+    workflow = agent_workflow.start(analysis, investigation, allow_vision=allow_vision)
+    analysis["agentic_workflow"] = workflow
+    refreshed_report = gemini_client.generate_report(analysis)
+    if not db.update_sample_artifacts(sample_id, analysis, refreshed_report):
+        raise HTTPException(404, "Sample disappeared during workflow creation")
+    _set_workflow_progress(
+        sample_id, "completed", "Planning completed; baseline approval is ready.",
+    )
+    return {
+        "id": sample_id,
+        "workflow": workflow,
+        "agentic": investigation,
+        "report": refreshed_report,
+    }
+
+
+def _sha256_path(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+_workflow_approval_lock = asyncio.Lock()
+
+
+@app.post("/api/agent/workflow/{sample_id}/approve")
+async def approve_agent_workflow_action(
+    sample_id: str,
+    file: UploadFile = File(...),
+    action_id: str = Form(...),
+    serial: str = Form(None),
+):
+    # Serialize approval claims within this process so a double-click cannot replay the
+    # same pending action before its completed state is persisted.
+    _set_workflow_progress(
+        sample_id, "approval_validating", "Validating the approved action and APK identity.",
+        reset=True, action=action_id,
+    )
+    try:
+        async with _workflow_approval_lock:
+            return await _approve_agent_workflow_action(sample_id, file, action_id, serial)
+    except Exception as exc:
+        _set_workflow_progress(
+            sample_id, "failed", "The approved action stopped before completion.",
+            error=str(exc)[:300],
+        )
+        raise
+
+
+async def _approve_agent_workflow_action(
+    sample_id: str,
+    file: UploadFile,
+    action_id: str,
+    serial: str | None,
+):
+    """Approve and execute exactly one server-proposed sandbox configuration."""
+    if not agent_workflow.health()["enabled"]:
+        raise HTTPException(409, "Agentic workflow is disabled; enable it in Settings")
+    if not agent_orchestrator.agent_health(check_provider=False)["enabled"]:
+        raise HTTPException(409, "AI Review must also be enabled")
+    saved = db.get_sample(sample_id)
+    if not saved:
+        raise HTTPException(404, "Sample not found")
+    analysis = saved["analysis"]
+    workflow = analysis.get("agentic_workflow") or {}
+    if (analysis.get("risk_score") != workflow.get("static_score_snapshot")
+            or analysis.get("severity") != workflow.get("static_severity_snapshot")):
+        raise HTTPException(409, "Static verdict changed after this workflow was created; start a new case")
+    try:
+        action = agent_workflow.pending_action(workflow, action_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    # Verify the re-uploaded bytes against the saved case before invoking the existing
+    # dynamic endpoint. The raw APK is never persisted in the workflow or database.
+    verify_path = None
+    try:
+        verify_path, _size = await _spool_upload(file)
+        expected_hash = str((analysis.get("file") or {}).get("sha256") or "").lower()
+        if not expected_hash or _sha256_path(verify_path).lower() != expected_hash:
+            raise HTTPException(400, "Re-uploaded APK does not match this investigation")
+    finally:
+        if verify_path and os.path.exists(verify_path):
+            try:
+                os.remove(verify_path)
+            except OSError:
+                pass
+    await file.seek(0)
+
+    config = action["config"]
+    _set_workflow_progress(
+        sample_id, "sandbox_running",
+        f"Running approved {action['title']} in the isolated emulator.",
+        action=action["kind"],
+    )
+    dynamic_response = await dynamic_analyze(
+        file=file,
+        duration=int(config["duration"]),
+        use_frida=bool(config["use_frida"]),
+        use_ui_agent=bool(config["use_ui_agent"]),
+        serial=serial,
+        ui_agent_mode=str(config["ui_agent_mode"]),
+    )
+    dynamic_result = json.loads(dynamic_response.body.decode("utf-8"))
+    _set_workflow_progress(
+        sample_id, "sandbox_completed",
+        "Sandbox pass completed; converting output into bounded evidence.",
+        action=action["kind"],
+    )
+    workflow, observation = agent_workflow.record_result(workflow, action_id, dynamic_result)
+    analysis["agentic_workflow"] = workflow
+
+    score_before = (
+        analysis.get("risk_score"), analysis.get("severity"),
+        list(analysis.get("score_breakdown", [])),
+    )
+    _set_workflow_progress(
+        sample_id, "evidence_review", "Reviewing the new runtime evidence with the selected model.",
+    )
+    investigation = await run_in_threadpool(
+        agent_orchestrator.run_investigation, analysis,
+        progress_callback=_agent_progress_callback(sample_id),
+    )
+    score_after = (
+        analysis.get("risk_score"), analysis.get("severity"),
+        list(analysis.get("score_breakdown", [])),
+    )
+    if score_after != score_before:
+        raise HTTPException(500, "Agent scoring invariant failed")
+    investigation = gemini_client.review_investigation(analysis, investigation)
+    workflow = agent_workflow.advance(
+        workflow, analysis, observation, investigation,
+        ui_enabled=ui_agent.health()["enabled"],
+        vision_enabled=ui_agent.health()["vision_enabled"],
+    )
+    analysis["agentic_workflow"] = workflow
+    refreshed_report = gemini_client.generate_report(analysis)
+    if not db.update_sample_artifacts(sample_id, analysis, refreshed_report):
+        raise HTTPException(404, "Sample disappeared while saving workflow result")
+    _set_workflow_progress(
+        sample_id, "completed",
+        "Review completed; the next approved action or final stop decision is ready.",
+        status=workflow.get("status"),
+    )
+    return {
+        "id": sample_id,
+        "workflow": workflow,
+        "dynamic": dynamic_result,
+        "agentic_review": investigation,
+        "report": refreshed_report,
+    }
+
+
 def _apk_identity(apk_path):
     """Fast package + main-activity extraction (no full static analysis)."""
     try:
@@ -288,7 +558,9 @@ async def dynamic_analyze(
     file: UploadFile = File(...),
     duration: int = Form(15),
     use_frida: bool = Form(False),
+    use_ui_agent: bool = Form(False),
     serial: str = Form(None),
+    ui_agent_mode: str = Form("tree"),
 ):
     """Run the uploaded APK in the attached emulator and observe its behaviour.
 
@@ -301,6 +573,16 @@ async def dynamic_analyze(
     st = dyn_sandbox.status()
     if not st.get("available"):
         raise HTTPException(503, st.get("reason", "No emulator/device available."))
+    if use_ui_agent and not ui_agent.health()["enabled"]:
+        raise HTTPException(409, "AI UI Explorer is disabled; set UI_AGENT_ENABLED=true")
+    ui_agent_mode = (ui_agent_mode if isinstance(ui_agent_mode, str) else "tree")
+    ui_agent_mode = (ui_agent_mode or "tree").strip().lower()
+    if use_ui_agent and ui_agent_mode not in {"tree", "vision"}:
+        raise HTTPException(400, "UI-agent mode must be 'tree' or 'vision'")
+    if use_ui_agent and ui_agent_mode == "vision" and not ui_agent.health()["vision_enabled"]:
+        raise HTTPException(409, "Vision-assisted UI exploration is disabled on this server")
+    if use_ui_agent and use_frida:
+        raise HTTPException(400, "Run Frida and AI UI Explorer as separate passes")
 
     tmp_path = None
     try:
@@ -308,13 +590,25 @@ async def dynamic_analyze(
             connected = {d.get("serial") for d in st.get("devices", [])}
             if serial not in connected:
                 raise HTTPException(400, "Selected emulator/device is not connected")
+        target_serial = serial or st.get("serial")
+        if use_ui_agent:
+            target = next((d for d in st.get("devices", [])
+                           if d.get("serial") == target_serial), None)
+            if not target or target.get("avd_name") != dyn_sandbox.DEFAULT_SANDBOX_AVD:
+                raise HTTPException(
+                    400,
+                    f"AI UI Explorer may run only on dedicated AVD "
+                    f"'{dyn_sandbox.DEFAULT_SANDBOX_AVD}'",
+                )
         tmp_path, _size = await _spool_upload(file)
         package, main_activity = _apk_identity(tmp_path)
         if not package:
             raise HTTPException(400, "Could not read package name — not a valid APK?")
         result = dyn_sandbox.run_dynamic(tmp_path, package, main_activity,
                                          duration=duration, use_frida=use_frida,
-                                         serial=serial or None)
+                                         serial=serial or None,
+                                         use_ui_agent=use_ui_agent,
+                                         ui_agent_mode=ui_agent_mode)
         result["filename"] = file.filename
         result["main_activity"] = main_activity
         return JSONResponse(result)

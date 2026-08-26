@@ -1,8 +1,9 @@
 """VirusTotal threat-intel corroboration.
 
 Looks up the APK's SHA256 (and a few extracted domains/IPs) against the free
-VirusTotal API v3 to corroborate the local heuristic verdict with real multi-engine
-detections. Entirely optional: with no VT_API_KEY it returns {"configured": False}
+VirusTotal API v3 to provide separate external context alongside the local verdict.
+It never changes the platform's score or verdict. Entirely optional: with no VT_API_KEY
+it returns {"configured": False}
 and the rest of the pipeline is unaffected.
 
 Free tier limits: 4 requests/min, 500/day — so we query the file hash first (most

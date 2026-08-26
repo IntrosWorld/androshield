@@ -1,16 +1,22 @@
 import copy
+import hashlib
+import io
 import json
 import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 
 from app.agent.evidence import build_evidence, public_evidence_index
 from app.agent.orchestrator import agent_health, run_investigation
-from app.agent.providers import AgentProvider, GeminiProvider, OllamaProvider
+from app.agent.providers import (
+    AgentProvider, GeminiProvider, OllamaProvider, OpenRouterProvider,
+)
 from app.agent.schemas import AgentSchemaError, validate_final_decision
 from app.agent.tools import EvidenceToolbox
+from app.agent import workflow as agent_workflow
 from app import main
 from app.genai import gemini_client
 
@@ -100,6 +106,22 @@ class EvidenceAndPolicyTests(unittest.TestCase):
         self.assertTrue(result["truncated"])
         self.assertLessEqual(len(json.dumps(result)), 14000)
 
+    def test_empty_read_tool_returns_citable_negative_observation(self):
+        result = EvidenceToolbox(build_evidence(_analysis())).execute("inspect_apis", {})
+        self.assertEqual(["observation:inspect_apis:none"], result["evidence_ids"])
+        self.assertEqual(0, result["items"][0]["data"]["matching_item_count"])
+
+    def test_runtime_observation_is_citable_without_raw_artifacts(self):
+        analysis = _analysis()
+        analysis["agentic_workflow"] = {"observations": [{
+            "id": "runtime-test", "action_kind": "dynamic_baseline",
+            "runtime_signals": ["dex_loaded"], "raw_logcat": "private log",
+        }]}
+        graph = build_evidence(analysis)
+        result = EvidenceToolbox(graph).execute("inspect_runtime", {})
+        self.assertEqual(["runtime:runtime-test"], result["evidence_ids"])
+        self.assertNotIn("private log", json.dumps(result))
+
     def test_final_schema_rejects_score_or_verdict_override(self):
         with self.assertRaises(AgentSchemaError):
             validate_final_decision({
@@ -136,6 +158,27 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(before, analysis)
         self.assertEqual(47, analysis["risk_score"])
         self.assertIn("UNTRUSTED TOOL RESULT", provider.messages[1][-1]["content"])
+
+    def test_progress_callback_reports_actions_without_hidden_reasoning(self):
+        events = []
+        provider = SequenceProvider([
+            {"type": "tool", "tool": "inspect_permissions", "arguments": {},
+             "reason": "Verify declared SMS access"},
+            {"type": "final", "hypotheses": [{
+                "claim": "SMS access is declared.", "confidence": "high",
+                "evidence_ids": ["permission:android.permission.READ_SMS"],
+            }], "gaps": [], "recommended_next_steps": []},
+        ])
+        result = run_investigation(
+            _analysis(), provider, max_steps=3, time_budget_seconds=10,
+            progress_callback=events.append,
+        )
+        self.assertEqual("completed", result["status"])
+        self.assertIn("tool_selected", [event["phase"] for event in events])
+        selected = next(event for event in events if event["phase"] == "tool_selected")
+        self.assertEqual("inspect_permissions", selected["action"])
+        self.assertEqual("Verify declared SMS access", selected["reason"])
+        self.assertNotIn("messages", json.dumps(events))
 
     def test_unknown_evidence_id_is_rejected(self):
         provider = SequenceProvider([{ "type": "final", "hypotheses": [{
@@ -197,6 +240,15 @@ class _Response:
 
 
 class ProviderParsingTests(unittest.TestCase):
+    def test_ollama_json_wrapped_in_short_explanation_is_extracted(self):
+        response = _Response({"message": {"content":
+            'Selected safe action:\n{"type":"final","reason":"done"}'}})
+        with patch("urllib.request.urlopen", return_value=response):
+            decision = OllamaProvider(timeout=1).next_step(
+                [{"role": "system", "content": "safe"}], [],
+            )
+        self.assertEqual("final", decision["type"])
+
     def test_ollama_native_tool_call_is_normalized(self):
         response = _Response({"message": {"content": "", "tool_calls": [{
             "function": {"name": "inspect_manifest", "arguments": {}}
@@ -226,6 +278,54 @@ class ProviderParsingTests(unittest.TestCase):
             )
         self.assertEqual("final", decision["type"])
         self.assertEqual(["Need more evidence"], decision["gaps"])
+
+    def test_openrouter_native_tool_call_uses_zdr_and_is_normalized(self):
+        response = _Response({"choices": [{"message": {"tool_calls": [{
+            "function": {"name": "inspect_manifest", "arguments": "{}"}
+        }]}}]})
+        with patch("urllib.request.urlopen", return_value=response) as request:
+            decision = OpenRouterProvider(
+                model="qwen/test", api_key="test-openrouter-key", timeout=1, zdr=True,
+            ).next_step([{"role": "system", "content": "safe"}], [{"type": "function"}])
+        sent_request = request.call_args.args[0]
+        payload = json.loads(sent_request.data)
+        self.assertEqual("https://openrouter.ai/api/v1/chat/completions", sent_request.full_url)
+        self.assertTrue(payload["provider"]["zdr"])
+        self.assertEqual("qwen/test", payload["model"])
+        self.assertEqual("tool", decision["type"])
+        self.assertEqual("inspect_manifest", decision["tool"])
+        self.assertNotIn("test-openrouter-key", json.dumps(payload))
+
+    def test_openrouter_translates_screenshot_without_changing_text(self):
+        translated = OpenRouterProvider._messages([{
+            "role": "user", "content": "synthetic screen", "images": ["aGVsbG8="],
+        }])
+        self.assertEqual("synthetic screen", translated[0]["content"][0]["text"])
+        self.assertEqual(
+            "data:image/png;base64,aGVsbG8=",
+            translated[0]["content"][1]["image_url"]["url"],
+        )
+
+    def test_openrouter_qwen_uses_validated_json_tool_envelope(self):
+        response = _Response({"choices": [{"message": {"content": json.dumps({
+            "type": "tool", "tool": "inspect_permissions", "arguments": {},
+            "reason": "Read permission evidence",
+        })}}]})
+        with patch("urllib.request.urlopen", return_value=response) as request:
+            decision = OpenRouterProvider(
+                model="qwen/qwen3-30b-a3b-instruct-2507",
+                api_key="test-key", timeout=1,
+            ).next_step([{"role": "system", "content": "safe"}], [{"type": "function"}])
+        payload = json.loads(request.call_args.args[0].data)
+        self.assertNotIn("tools", payload)
+        self.assertIn("AVAILABLE TOOLS", payload["messages"][-1]["content"])
+        self.assertEqual("inspect_permissions", decision["tool"])
+
+    def test_openrouter_health_respects_external_api_gate(self):
+        with patch.dict(os.environ, {"EXTERNAL_API_ENABLED": "false"}):
+            health = OpenRouterProvider(api_key="configured").health()
+        self.assertFalse(health["available"])
+        self.assertIn("disabled", health["reason"])
 
     def test_gemini_review_cannot_change_deterministic_score(self):
         analysis = _analysis()
@@ -276,6 +376,172 @@ class AgentApiTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as context:
                 await main.investigate_sample("case123")
         self.assertEqual(409, context.exception.status_code)
+
+
+class AgentWorkflowPolicyTests(unittest.TestCase):
+    def test_start_only_proposes_baseline_and_locks_static_score(self):
+        investigation = {"status": "completed", "hypotheses": [], "audit": []}
+        workflow = agent_workflow.start(_analysis(), investigation)
+        self.assertEqual("approval_required", workflow["status"])
+        self.assertEqual(47, workflow["static_score_snapshot"])
+        self.assertEqual(1, len(workflow["proposals"]))
+        self.assertEqual("dynamic_baseline", workflow["proposals"][0]["kind"])
+        self.assertTrue(workflow["proposals"][0]["requires_approval"])
+        self.assertEqual("pending", workflow["proposals"][0]["status"])
+
+    def test_action_cannot_be_replayed_and_result_is_bounded(self):
+        workflow = agent_workflow.start(_analysis(), {"hypotheses": []})
+        action_id = workflow["proposals"][0]["id"]
+        updated, observation = agent_workflow.record_result(workflow, action_id, {
+            "ran": True, "dynamic_score": 8,
+            "runtime_signals": [f"signal-{index}" for index in range(100)],
+            "network": {"urls": [f"https://example.org/{index}" for index in range(100)]},
+            "raw_logcat": "must not persist", "screenshots": ["private.png"],
+        })
+        self.assertEqual(30, len(observation["runtime_signals"]))
+        self.assertEqual(30, len(observation["network"]["urls"]))
+        self.assertNotIn("must not persist", json.dumps(updated))
+        self.assertNotIn("private.png", json.dumps(updated))
+        with self.assertRaises(ValueError):
+            agent_workflow.pending_action(updated, action_id)
+
+    def test_pending_action_ignores_mutated_persisted_config(self):
+        workflow = agent_workflow.start(_analysis(), {"hypotheses": []})
+        proposal = workflow["proposals"][0]
+        proposal["config"] = {"duration": 3600, "use_frida": True, "use_ui_agent": True}
+        action = agent_workflow.pending_action(workflow, proposal["id"])
+        self.assertEqual(20, action["config"]["duration"])
+        self.assertFalse(action["config"]["use_frida"])
+        self.assertFalse(action["config"]["use_ui_agent"])
+
+    def test_advance_proposes_only_allowlisted_fixed_frida_pass(self):
+        analysis = _analysis()
+        analysis["obfuscation"] = {"score": 10}
+        workflow = agent_workflow.start(analysis, {"hypotheses": []})
+        action_id = workflow["proposals"][0]["id"]
+        workflow, observation = agent_workflow.record_result(workflow, action_id, {"ran": True})
+        workflow = agent_workflow.advance(
+            workflow, analysis, observation, {"hypotheses": []},
+            ui_enabled=True, vision_enabled=True,
+        )
+        proposal = workflow["proposals"][-1]
+        self.assertEqual("dynamic_frida", proposal["kind"])
+        self.assertEqual(agent_workflow.ACTION_CONFIGS["dynamic_frida"]["duration"], proposal["config"]["duration"])
+        self.assertEqual("approval_required", workflow["status"])
+
+    def test_vision_follow_up_requires_per_workflow_consent(self):
+        analysis = _analysis()
+        analysis["manifest"]["main_activity"] = "MainActivity"
+        analysis["permissions"]["dangerous"].append({"name": "READ_SMS"})
+        for allowed in (False, True):
+            with self.subTest(allowed=allowed):
+                workflow = agent_workflow.start(analysis, {"hypotheses": []}, allow_vision=allowed)
+                baseline_id = workflow["proposals"][0]["id"]
+                workflow, baseline = agent_workflow.record_result(workflow, baseline_id, {"ran": True})
+                workflow = agent_workflow.advance(
+                    workflow, analysis, baseline, {"hypotheses": []},
+                    ui_enabled=True, vision_enabled=True,
+                )
+                self.assertEqual("dynamic_ui_tree", workflow["proposals"][-1]["kind"])
+                tree_id = workflow["proposals"][-1]["id"]
+                workflow, tree = agent_workflow.record_result(workflow, tree_id, {
+                    "ran": True, "ui_agent": {"status": "blocked"},
+                })
+                workflow = agent_workflow.advance(
+                    workflow, analysis, tree, {"hypotheses": []},
+                    ui_enabled=True, vision_enabled=True,
+                )
+                expected = "dynamic_ui_vision" if allowed else "dynamic_ui_tree"
+                if allowed:
+                    self.assertEqual(expected, workflow["proposals"][-1]["kind"])
+                else:
+                    self.assertEqual("completed", workflow["status"])
+
+
+class AgentWorkflowApiTests(unittest.IsolatedAsyncioTestCase):
+    async def test_status_endpoint_returns_bounded_live_progress(self):
+        analysis = _analysis()
+        main._workflow_progress["case123"] = {
+            "active": True, "phase": "model_wait", "events": [{
+                "phase": "tool_selected", "message": "Selected read-only tool",
+                "action": "inspect_permissions", "reason": "Verify capability",
+            }],
+        }
+        with patch.object(main.db, "get_sample", return_value={"analysis": analysis}):
+            response = await main.agent_workflow_status("case123")
+        self.assertEqual("model_wait", response["progress"]["phase"])
+        self.assertEqual("inspect_permissions", response["progress"]["events"][0]["action"])
+
+    async def test_start_is_additive_and_never_runs_dynamic_endpoint(self):
+        analysis = _analysis()
+        investigation = {
+            "enabled": True, "status": "completed", "provider": "fake", "model": "test",
+            "hypotheses": [], "gaps": ["No runtime evidence"], "audit": [],
+        }
+        analysis["agentic"] = investigation
+        with patch.dict(os.environ, {"AGENT_ENABLED": "true", "AGENT_WORKFLOW_ENABLED": "true"}), \
+             patch.object(main.db, "get_sample", return_value={"analysis": analysis, "report": {}}), \
+             patch.object(main.gemini_client, "generate_report", return_value={}), \
+             patch.object(main.db, "update_sample_artifacts", return_value=True), \
+             patch.object(main, "dynamic_analyze", new=AsyncMock()) as dynamic:
+            response = await main.start_agent_workflow("case123")
+        dynamic.assert_not_awaited()
+        self.assertEqual("approval_required", response["workflow"]["status"])
+        self.assertIs(analysis["agentic"], investigation)
+        self.assertIn("agentic_workflow", analysis)
+
+    async def test_start_is_idempotent_and_preserves_existing_workflow(self):
+        analysis = _analysis()
+        investigation = {"status": "completed", "hypotheses": [], "audit": []}
+        existing = agent_workflow.start(analysis, investigation)
+        analysis["agentic"] = investigation
+        analysis["agentic_workflow"] = existing
+        with patch.dict(os.environ, {"AGENT_ENABLED": "true", "AGENT_WORKFLOW_ENABLED": "true"}), \
+             patch.object(main.db, "get_sample", return_value={"analysis": analysis, "report": {"saved": True}}), \
+             patch.object(main.db, "update_sample_artifacts") as update:
+            response = await main.start_agent_workflow("case123")
+        self.assertIs(existing, response["workflow"])
+        update.assert_not_called()
+
+    async def test_approval_rejects_different_apk_before_execution(self):
+        analysis = _analysis()
+        analysis["file"]["sha256"] = hashlib.sha256(b"expected apk").hexdigest()
+        analysis["agentic_workflow"] = agent_workflow.start(analysis, {"hypotheses": []})
+        action_id = analysis["agentic_workflow"]["proposals"][0]["id"]
+        upload = UploadFile(filename="different.apk", file=io.BytesIO(b"different apk"))
+        with patch.dict(os.environ, {"AGENT_WORKFLOW_ENABLED": "true"}), \
+             patch.object(main.db, "get_sample", return_value={"analysis": analysis, "report": {}}), \
+             patch.object(main, "dynamic_analyze", new=AsyncMock()) as dynamic:
+            with self.assertRaises(HTTPException) as context:
+                await main.approve_agent_workflow_action("case123", upload, action_id, None)
+        self.assertEqual(400, context.exception.status_code)
+        dynamic.assert_not_awaited()
+
+    async def test_approved_action_uses_server_config_and_preserves_static_score(self):
+        apk_bytes = b"matching apk bytes"
+        analysis = _analysis()
+        analysis["file"]["sha256"] = hashlib.sha256(apk_bytes).hexdigest()
+        initial_agent = {"status": "completed", "hypotheses": [], "audit": []}
+        analysis["agentic_workflow"] = agent_workflow.start(analysis, initial_agent)
+        action = analysis["agentic_workflow"]["proposals"][0]
+        reviewed = {"status": "completed", "hypotheses": [], "audit": []}
+        dynamic_result = {"ran": True, "duration": 20, "dynamic_score": 0,
+                          "runtime_signals": [], "network": {}}
+        upload = UploadFile(filename="matching.apk", file=io.BytesIO(apk_bytes))
+        with patch.dict(os.environ, {"AGENT_ENABLED": "true", "AGENT_WORKFLOW_ENABLED": "true"}), \
+             patch.object(main.db, "get_sample", return_value={"analysis": analysis, "report": {}}), \
+             patch.object(main, "dynamic_analyze", new=AsyncMock(return_value=JSONResponse(dynamic_result))) as dynamic, \
+             patch.object(main, "run_in_threadpool", new=AsyncMock(return_value=reviewed)), \
+             patch.object(main.gemini_client, "review_investigation", return_value=reviewed), \
+             patch.object(main.gemini_client, "generate_report", return_value={}), \
+             patch.object(main.db, "update_sample_artifacts", return_value=True):
+            response = await main.approve_agent_workflow_action("case123", upload, action["id"], "emulator-5554")
+        kwargs = dynamic.await_args.kwargs
+        self.assertEqual(20, kwargs["duration"])
+        self.assertFalse(kwargs["use_frida"])
+        self.assertFalse(kwargs["use_ui_agent"])
+        self.assertEqual(47, analysis["risk_score"])
+        self.assertEqual("completed", response["workflow"]["status"])
 
 
 if __name__ == "__main__":

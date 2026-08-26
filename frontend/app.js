@@ -26,7 +26,7 @@ const safeHttpUrl = (value) => {
 const statusChipTone = (status) => {
   const value = String(status || "").toLowerCase();
   if (["completed", "ok", "ready", "grounded"].includes(value)) return "chip-success";
-  if (["running", "pending", "investigating"].includes(value)) return "chip-info";
+  if (["running", "pending", "investigating", "reviewing"].includes(value)) return "chip-info";
   if (["approval_required", "unavailable", "warning"].includes(value)) return "chip-warning";
   return "chip-danger";
 };
@@ -86,23 +86,33 @@ function renderSettings(data) {
   settingsData = data;
   $("setting-external-enabled").checked = Boolean(data.external_api_enabled);
   $("setting-agent-enabled").checked = Boolean(data.agent_enabled);
+  $("setting-agent-workflow-enabled").checked = Boolean(data.agent_workflow_enabled);
   $("setting-agent-auto-run").checked = Boolean(data.agent_auto_run);
   $("setting-gemini-review").checked = Boolean(data.agent_gemini_review);
+  $("setting-ollama-fallback").checked = Boolean(data.agent_ollama_fallback);
+  $("setting-openrouter-zdr").checked = data.openrouter_zdr !== false;
+  $("setting-ui-vision-enabled").checked = Boolean(data.ui_agent_vision_enabled);
   $("setting-provider").value = data.agent_provider || "ollama";
   $("setting-ollama-url").value = data.ollama_base_url || "";
   $("setting-ollama-model").value = data.ollama_model || "";
   $("setting-models-dir").value = data.ollama_models_dir || "";
   $("setting-gemini-model").value = data.gemini_model || "";
+  $("setting-openrouter-model").value = data.openrouter_model || "";
+  $("setting-ui-provider").value = data.ui_agent_provider || "ollama";
+  $("setting-ui-model").value = data.ui_agent_model || "";
   $("setting-context-tokens").value = data.agent_context_tokens ?? 4096;
   $("setting-max-steps").value = data.agent_max_steps ?? 8;
   $("setting-max-tools").value = data.agent_max_tool_calls ?? 4;
   $("setting-time-budget").value = data.agent_time_budget_seconds ?? 420;
   $("setting-provider-timeout").value = data.agent_provider_timeout_seconds ?? 240;
   $("gemini-key-state").textContent = data.gemini_key_configured ? "(saved)" : "";
+  $("openrouter-key-state").textContent = data.openrouter_key_configured ? "(saved)" : "";
   $("vt-key-state").textContent = data.virustotal_key_configured ? "(saved)" : "";
   $("setting-gemini-key").value = "";
+  $("setting-openrouter-key").value = "";
   $("setting-vt-key").value = "";
   $("clear-gemini-key").checked = false;
+  $("clear-openrouter-key").checked = false;
   $("clear-vt-key").checked = false;
 }
 
@@ -173,24 +183,34 @@ function collectSettings() {
   const data = {
     external_api_enabled: $("setting-external-enabled").checked,
     agent_enabled: $("setting-agent-enabled").checked,
+    agent_workflow_enabled: $("setting-agent-workflow-enabled").checked,
     agent_auto_run: $("setting-agent-auto-run").checked,
     agent_gemini_review: $("setting-gemini-review").checked,
+    agent_ollama_fallback: $("setting-ollama-fallback").checked,
+    openrouter_zdr: $("setting-openrouter-zdr").checked,
+    ui_agent_vision_enabled: $("setting-ui-vision-enabled").checked,
     agent_provider: settingValue("setting-provider"),
     ollama_base_url: settingValue("setting-ollama-url"),
     ollama_model: settingValue("setting-ollama-model"),
     ollama_models_dir: settingValue("setting-models-dir"),
     gemini_model: settingValue("setting-gemini-model"),
+    openrouter_model: settingValue("setting-openrouter-model"),
+    ui_agent_provider: settingValue("setting-ui-provider"),
+    ui_agent_model: settingValue("setting-ui-model"),
     agent_context_tokens: settingNumber("setting-context-tokens"),
     agent_max_steps: settingNumber("setting-max-steps"),
     agent_max_tool_calls: settingNumber("setting-max-tools"),
     agent_time_budget_seconds: settingNumber("setting-time-budget"),
     agent_provider_timeout_seconds: settingNumber("setting-provider-timeout"),
     clear_gemini_api_key: $("clear-gemini-key").checked,
+    clear_openrouter_api_key: $("clear-openrouter-key").checked,
     clear_virustotal_api_key: $("clear-vt-key").checked,
   };
   const geminiKey = settingValue("setting-gemini-key");
+  const openrouterKey = settingValue("setting-openrouter-key");
   const vtKey = settingValue("setting-vt-key");
   if (geminiKey) data.gemini_api_key = geminiKey;
+  if (openrouterKey) data.openrouter_api_key = openrouterKey;
   if (vtKey) data.virustotal_api_key = vtKey;
   return data;
 }
@@ -300,20 +320,52 @@ function refreshHealth() {
     let badges = h.gemini_configured
       ? '<span class="chip chip-success">Gemini connected</span>'
       : '<span class="chip">Template mode (no GEMINI_API_KEY)</span>';
+    if (h.openrouter_configured) {
+      badges += ' <span class="chip chip-success">OpenRouter connected</span>';
+    }
     if (h.analyzer_ready === false) {
       badges += ' <span class="chip chip-danger">Engine offline: start from .venv</span>';
     }
     if (h.agentic?.enabled) {
-      badges += ` <span class="chip chip-info">Agent: ${esc(h.agentic.provider)} / ${esc(h.agentic.model)}</span>`;
+      badges += ` <span class="chip chip-info">AI Review: ${esc(h.agentic.provider)} / ${esc(h.agentic.model)}</span>`;
+    }
+    if (h.agentic_workflow?.enabled) {
+      badges += ' <span class="chip chip-warning">Agentic Investigation enabled</span>';
     }
     $("gemini-badge").innerHTML = badges;
     updateEmuStatus();
+    if (currentAnalysis) renderWorkflow(currentAnalysis.agentic_workflow);
   }).catch(() => {});
 }
 function updateEmuStatus() {
   const el = $("emu-status"); if (!el) return;
   const d = healthData.dynamic || {};
   const sel = $("dyn-device");
+  const uiAgent = $("dyn-ui-agent");
+  const uiMode = $("dyn-ui-agent-mode");
+  if (uiAgent) {
+    uiAgent.disabled = !healthData.ui_agent?.enabled;
+    if (!healthData.ui_agent?.enabled) uiAgent.checked = false;
+  }
+  if (uiMode) {
+    const visionOption = uiMode.querySelector('option[value="vision"]');
+    if (visionOption) visionOption.disabled = !healthData.ui_agent?.vision_enabled;
+    if (!healthData.ui_agent?.vision_enabled && uiMode.value === "vision") uiMode.value = "tree";
+    uiMode.disabled = !healthData.ui_agent?.enabled || !uiAgent?.checked;
+  }
+  const uiNote = $("dyn-agent-note");
+  if (uiNote) uiNote.textContent = healthData.ui_agent?.enabled
+    ? `AI UI Explorer is ready (${healthData.ui_agent.provider} / ${healthData.ui_agent.model}). Choose UI tree${healthData.ui_agent.vision_enabled ? " or vision-assisted exploration" : " mode; screenshot vision is unavailable"}. Synthetic data only; high-impact actions are blocked and audited.`
+    : "The UI agent is disabled on this server. Set UI_AGENT_ENABLED=true to enable it; real credentials and payment data are never used.";
+  const workflowVision = $("workflow-vision"), workflowVisionState = $("workflow-vision-state");
+  const visionReady = Boolean(healthData.ui_agent?.enabled && healthData.ui_agent?.vision_enabled);
+  if (workflowVision && !currentAnalysis?.agentic_workflow) {
+    workflowVision.disabled = !visionReady;
+    workflowVision.checked = visionReady;
+  }
+  if (workflowVisionState) workflowVisionState.textContent = visionReady
+    ? `Available: ${healthData.ui_agent.provider} / ${healthData.ui_agent.model}`
+    : "Unavailable globally; enable screenshot vision in Settings.";
   if (d.available) {
     const dev = d.device || {};
     if (d.sandbox_present) {
@@ -338,6 +390,11 @@ function updateEmuStatus() {
   }
 }
 refreshHealth();
+
+$("dyn-ui-agent")?.addEventListener("change", event => {
+  const mode = $("dyn-ui-agent-mode");
+  if (mode) mode.disabled = !event.target.checked;
+});
 
 // --- File selection ---
 const dropzone = $("dropzone"), fileInput = $("file-input");
@@ -459,6 +516,7 @@ function render(a, report) {
     b => `<span class="chip chip-info">${esc(b)}</span>`).join("") ||
     '<span class="text-slate-500 text-sm">No high-risk behaviours flagged.</span>';
   renderAgent(a.agentic);
+  renderWorkflow(a.agentic_workflow);
 
   // Breakdown
   $("breakdown").innerHTML = (a.score_breakdown || []).map(b => `
@@ -642,12 +700,15 @@ function renderAgent(agent) {
 $("agent-run-btn")?.addEventListener("click", async () => {
   if (!currentId) return;
   const button = $("agent-run-btn"), body = $("agent-body");
-  setButtonBusy(button, true, "Investigating…");
-  body.innerHTML = '<p class="text-cyan-300">The bounded agent is reviewing extracted evidence. CPU-only local inference may take several minutes; the server remains responsive.</p>';
+  const provider = healthData.agentic?.provider || "unknown";
+  const model = healthData.agentic?.model || "unknown";
+  const location = provider === "ollama" ? "locally through Ollama" : `through hosted ${provider}`;
+  setButtonBusy(button, true, "Reviewing…");
+  body.innerHTML = `<p class="text-cyan-300">AI Review is using <strong>${esc(model)}</strong> ${esc(location)}. Only extracted evidence is provided; the APK itself is not sent to the model.</p>`;
   try {
     const response = await fetch(`${API}/api/agent/investigate/${encodeURIComponent(currentId)}`, {method: "POST"});
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || "Agentic investigation failed");
+    if (!response.ok) throw new Error(data.detail || "AI Review failed");
     currentAnalysis.agentic = data.agentic;
     currentReport = data.report || currentReport;
     $("exec-summary").textContent = plain(currentReport.executive_summary || "No narrative summary was produced.");
@@ -660,6 +721,192 @@ $("agent-run-btn")?.addEventListener("click", async () => {
     button.disabled = !healthData.agentic?.enabled;
   }
 });
+
+function workflowActionLabel(proposal) {
+  const config = proposal?.config || {};
+  if (config.use_frida) return "Approve Frida run";
+  if (config.use_ui_agent && config.ui_agent_mode === "vision") return "Approve vision run";
+  if (config.use_ui_agent) return "Approve UI-tree run";
+  return "Approve baseline run";
+}
+
+function setWorkflowStatus(message = "", tone = "info") {
+  const status = $("workflow-status");
+  if (!status) return;
+  status.textContent = plain(message);
+  status.classList.toggle("hidden", !message);
+  status.className = `mx-5 mt-4 rounded-lg border px-3 py-2 text-xs ${
+    tone === "danger" ? "border-rose-400/40 text-rose-500" :
+    tone === "success" ? "border-emerald-400/40 text-emerald-500" :
+    "border-cyan-400/40 text-cyan-500"
+  }${message ? "" : " hidden"}`;
+}
+
+let workflowProgressTimer = null;
+
+function renderWorkflowProgress(progress) {
+  const live = $("workflow-live");
+  if (!live) return;
+  const events = progress?.events || [];
+  live.classList.toggle("hidden", !events.length);
+  if (!events.length) return;
+  live.innerHTML = `<div class="flex items-center justify-between gap-3 mb-2"><div><div class="text-xs uppercase tracking-wide text-cyan-500">Live investigation activity</div><div class="text-[11px] text-slate-500 mt-0.5">High-level actions and stated rationales, not private chain-of-thought.</div></div>${progress.active ? '<span class="chip chip-info">live</span>' : '<span class="chip chip-success">finished</span>'}</div>`
+    + events.map(event => `<div class="border-t border-slate-800/70 py-2 text-xs">
+      <div class="flex justify-between gap-3"><span class="text-slate-200">${esc(event.message)}</span><span class="text-slate-500">${esc(event.phase)}</span></div>
+      ${event.reason ? `<div class="mt-1 text-slate-500">Reason: ${esc(event.reason)}</div>` : ""}
+      ${event.action ? `<div class="mt-1 text-slate-500">Tool/action: <code>${esc(event.action)}</code>${event.evidence_count != null ? ` · ${esc(event.evidence_count)} evidence item(s)` : ""}</div>` : ""}
+    </div>`).join("");
+  live.scrollTop = live.scrollHeight;
+}
+
+async function pollWorkflowProgress() {
+  if (!currentId) return;
+  try {
+    const response = await fetch(`${API}/api/agent/workflow/${encodeURIComponent(currentId)}/status`);
+    if (!response.ok) return;
+    const data = await response.json();
+    renderWorkflowProgress(data.progress);
+  } catch (_) {}
+}
+
+function startWorkflowProgressPolling() {
+  if (workflowProgressTimer) clearInterval(workflowProgressTimer);
+  pollWorkflowProgress();
+  workflowProgressTimer = setInterval(pollWorkflowProgress, 900);
+}
+
+async function stopWorkflowProgressPolling() {
+  if (workflowProgressTimer) clearInterval(workflowProgressTimer);
+  workflowProgressTimer = null;
+  await pollWorkflowProgress();
+}
+
+function renderWorkflow(workflow) {
+  const body = $("workflow-body"), button = $("workflow-start-btn");
+  if (!body || !button) return;
+  const enabled = Boolean(healthData.agentic_workflow?.enabled && healthData.agentic?.enabled);
+  const visionControl = $("workflow-vision"), visionState = $("workflow-vision-state");
+  const visionReady = Boolean(healthData.ui_agent?.enabled && healthData.ui_agent?.vision_enabled);
+  button.disabled = !enabled || !currentId;
+  if (!workflow) {
+    if (visionControl) {
+      visionControl.disabled = !visionReady;
+      visionControl.checked = visionReady;
+    }
+    if (visionState) visionState.textContent = visionReady
+      ? `Available: ${healthData.ui_agent.provider} / ${healthData.ui_agent.model}`
+      : "Unavailable globally; enable screenshot vision in Settings.";
+    button.textContent = "Start Agentic Investigation";
+    body.innerHTML = enabled
+      ? '<p>Ready. Starting creates a proposal only; it does not execute the APK. Every emulator pass requires a matching APK re-upload and your explicit approval.</p>'
+      : '<p class="text-slate-500">Disabled. Enable both <strong>AI Review</strong> and <strong>Agentic Investigation</strong> in Settings.</p>';
+    return;
+  }
+  if (visionControl) {
+    visionControl.checked = Boolean(workflow.allow_vision);
+    visionControl.disabled = true;
+  }
+  if (visionState) visionState.textContent = workflow.allow_vision
+    ? "Visual-model follow-up was allowed when this workflow started."
+    : "Visual-model follow-up is off for this workflow.";
+  button.disabled = true;
+  button.textContent = workflow.status === "completed" ? "Workflow complete" : "Workflow active";
+  const proposals = (workflow.proposals || []).map(proposal => {
+    const config = proposal.config || {};
+    const pending = proposal.status === "pending";
+    return `<div class="agent-hypothesis">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div><div class="flex flex-wrap items-center gap-2"><span class="chip ${statusChipTone(proposal.status)}">${esc(proposal.status)}</span><strong class="text-slate-200">${esc(proposal.title)}</strong></div>
+        <p class="mt-2 text-xs text-slate-500">${esc(proposal.reason)}</p></div>
+        ${pending ? `<button class="btn-warning shrink-0" type="button" data-workflow-approve="${esc(proposal.id)}">${esc(workflowActionLabel(proposal))}</button>` : ""}
+      </div>
+      <div class="mt-2 text-xs text-slate-500">Fixed policy: ${esc(config.duration || 0)}s · Frida ${config.use_frida ? "on" : "off"} · UI ${config.use_ui_agent ? esc(config.ui_agent_mode) : "off"}</div>
+    </div>`;
+  }).join("");
+  const observations = (workflow.observations || []).map(observation => {
+    const network = observation.network || {}, frida = observation.frida || {}, ui = observation.ui_agent || {};
+    const endpointCount = (network.urls || []).length + (network.domains || []).length + (network.ips || []).length;
+    return `<div class="finding-row"><div class="finding-score text-cyan-300">${esc(observation.dynamic_score ?? 0)}</div><div>
+      <div class="finding-name">${esc(observation.action_kind || "sandbox observation")}</div>
+      <div class="finding-detail">${esc((observation.runtime_signals || []).length)} runtime signal(s), ${esc(endpointCount)} network indicator(s), ${esc(frida.event_count || 0)} Frida event(s), ${esc(ui.steps_used || 0)} UI step(s).</div>
+    </div></div>`;
+  }).join("");
+  const audit = (workflow.audit || []).map(entry => `<div class="flex justify-between gap-3 border-b border-slate-800 py-1.5"><span>${esc(entry.detail || entry.event)}</span><span class="chip ${statusChipTone(entry.status)}">${esc(entry.status)}</span></div>`).join("");
+  body.innerHTML = `<div class="flex flex-wrap gap-2 mb-3"><span class="chip ${statusChipTone(workflow.status)}">${esc(workflow.status)}</span><span class="chip">Policy ${esc(workflow.policy_version)}</span><span class="chip">Static score locked at ${esc(workflow.static_score_snapshot ?? "Unknown")}</span><span class="chip">Visual follow-up ${workflow.allow_vision ? "allowed" : "off"}</span></div>
+    <div class="space-y-2">${proposals || '<p class="text-slate-500">No actions proposed.</p>'}</div>
+    ${observations ? `<div class="mt-4"><div class="text-xs uppercase tracking-wide text-slate-500 mb-2">Approved observations</div><div class="finding-list">${observations}</div></div>` : ""}
+    <details class="mt-4"><summary class="cursor-pointer text-xs text-slate-500">Workflow audit (${(workflow.audit || []).length})</summary><div class="mt-2">${audit || "No events."}</div></details>`;
+}
+
+$("workflow-start-btn")?.addEventListener("click", async () => {
+  if (!currentId) return;
+  const button = $("workflow-start-btn"), body = $("workflow-body");
+  setButtonBusy(button, true, "Planning…");
+  startWorkflowProgressPolling();
+  setWorkflowStatus("Preparing an approval request. No APK is being executed yet.");
+  body.innerHTML = '<p class="text-cyan-300">Reviewing saved evidence and preparing one approval request. No APK is being executed.</p>';
+  try {
+    const allowVision = Boolean($("workflow-vision")?.checked);
+    const response = await fetch(`${API}/api/agent/workflow/${encodeURIComponent(currentId)}?allow_vision=${allowVision ? "true" : "false"}`, {method: "POST"});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || "Could not start Agentic Investigation");
+    currentAnalysis.agentic = data.agentic;
+    currentAnalysis.agentic_workflow = data.workflow;
+    currentReport = data.report || currentReport;
+    renderAgent(data.agentic);
+    renderWorkflow(data.workflow);
+    setWorkflowStatus("Workflow created. Review the fixed action and approve it when ready.", "success");
+  } catch (error) {
+    body.innerHTML = `<p class="text-rose-400">${esc(error.message)}</p>`;
+    setWorkflowStatus(error.message, "danger");
+  } finally {
+    await stopWorkflowProgressPolling();
+    setButtonBusy(button, false);
+    renderWorkflow(currentAnalysis?.agentic_workflow);
+  }
+});
+
+$("workflow-body")?.addEventListener("click", async event => {
+  const button = event.target.closest("[data-workflow-approve]");
+  if (!button || !currentId) return;
+  if (!selectedFile) {
+    const message = "Approval was not sent: re-select the original APK in the upload area first. Browsers do not retain file access after a refresh or when opening a history case; its SHA256 will be verified before execution.";
+    setWorkflowStatus(message, "danger");
+    showError(message);
+    return;
+  }
+  hideError();
+  setWorkflowStatus("Approval sent. Running the fixed sandbox pass, then waiting for the OpenRouter evidence review. Keep this page open; this can take about a minute.");
+  const form = new FormData();
+  form.append("file", selectedFile);
+  form.append("action_id", button.dataset.workflowApprove);
+  const serial = $("dyn-device")?.value;
+  if (serial) form.append("serial", serial);
+  setButtonBusy(button, true, "Running safely…");
+  startWorkflowProgressPolling();
+  try {
+    const response = await fetch(`${API}/api/agent/workflow/${encodeURIComponent(currentId)}/approve`, {method: "POST", body: form});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || "Approved sandbox action failed");
+    currentAnalysis.agentic_workflow = data.workflow;
+    currentAnalysis.agentic = data.agentic_review;
+    currentReport = data.report || currentReport;
+    renderWorkflow(data.workflow);
+    renderAgent(data.agentic_review);
+    renderDynamic(data.dynamic);
+    setWorkflowStatus(data.workflow.status === "approval_required"
+      ? "Approved pass completed. The review proposed one additional action; approve it only if you want that pass."
+      : "Approved pass and evidence review completed.", "success");
+  } catch (error) {
+    showError(error.message);
+    setWorkflowStatus(`Approval failed: ${error.message}`, "danger");
+  } finally {
+    await stopWorkflowProgressPolling();
+    setButtonBusy(button, false);
+  }
+});
+
+$("workflow-settings-btn")?.addEventListener("click", () => $("settings-open")?.click());
 
 // --- Sample history ---
 const SEV_CHIP = (sev) => `<span class="chip ${severityChipTone(sev)}">${esc(sev)}</span>`;
@@ -730,16 +977,25 @@ async function runDynamic() {
     return;
   }
   const dur = $("dyn-duration").value, frida = $("dyn-frida").checked;
+  const uiAgent = $("dyn-ui-agent")?.checked || false;
+  const uiAgentMode = uiAgent ? ($("dyn-ui-agent-mode")?.value || "tree") : "tree";
+  if (frida && uiAgent) {
+    $("dyn-results").classList.remove("hidden");
+    $("dyn-results").innerHTML = `<p class="text-amber-400 text-sm">Run Frida hooks and AI UI Explorer as separate passes.</p>`;
+    return;
+  }
   const serial = $("dyn-device").value;
   $("dyn-results").classList.add("hidden");
   $("dyn-loading").classList.remove("hidden");
-  $("dyn-loading-text").textContent = `Installing & running for ${dur}s${frida ? " with Frida hooks" : ""}…`;
+  $("dyn-loading-text").textContent = `Installing & running for ${dur}s${frida ? " with Frida hooks" : ""}${uiAgent ? " with bounded AI interaction" : ""}…`;
   setButtonBusy($("dyn-run-btn"), true, "Running safely…");
 
   const fd = new FormData();
   fd.append("file", selectedFile);
   fd.append("duration", dur);
   fd.append("use_frida", frida ? "true" : "false");
+  fd.append("use_ui_agent", uiAgent ? "true" : "false");
+  fd.append("ui_agent_mode", uiAgentMode);
   if (serial) fd.append("serial", serial);
   try {
     const res = await fetch(`${API}/api/dynamic`, { method: "POST", body: fd });
@@ -769,6 +1025,7 @@ function renderDynamic(d) {
   const list = (label, arr) => (arr && arr.length)
     ? `<div><span class="text-slate-400">${label}:</span> <span class="text-slate-300 font-mono text-xs break-all">${arr.slice(0,15).map(esc).join(", ")}</span></div>` : "";
   const fr = d.frida || {};
+  const ua = d.ui_agent || {};
   $("dyn-results").innerHTML =
     `<div class="flex items-center gap-3 mb-3"><span class="text-2xl font-medium font-mono text-amber-400">${d.dynamic_score ?? 0}</span><span class="text-slate-400 text-sm">dynamic behaviour score, ran ${d.duration}s${d.use_frida ? ", Frida" : ""}${d.rooted ? ", root" : ""}${d.has_launcher === false ? ", no launcher icon" : ""}</span></div>`
     + ((d.activated && d.activated.length) ? `<div class="text-xs text-slate-400 mb-2">Triggered: ${d.activated.map(x=>`<span class="chip chip-warning">${esc(x)}</span>`).join(" ")}</div>` : "")
@@ -782,6 +1039,9 @@ function renderDynamic(d) {
     + (fr.ran ? `<div class="mt-3"><div class="text-xs text-slate-400 mb-1">Frida-hooked events (${fr.event_count}):</div><div class="flex flex-wrap gap-1.5">`
         + (fr.findings||[]).map(f=>`<span class="chip chip-info">${esc(f.label)} ×${Number(f.count)||0}</span>`).join("") + `</div></div>`
       : (d.use_frida && fr.reason ? `<div class="mt-3 text-xs text-slate-500">Frida: ${esc(fr.reason.split("\n")[0])}</div>` : ""))
+    + (d.use_ui_agent ? `<div class="mt-4 rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3">`
+        + `<div class="flex flex-wrap items-center gap-2"><span class="text-sm font-semibold text-cyan-200">AI UI Explorer</span><span class="chip chip-info">${esc(ua.status || "unknown")}</span><span class="chip chip-info">${ua.mode === "vision" ? "Vision assisted" : "UI tree"}</span>${ua.vision_enabled ? `<span class="chip chip-info">${Number(ua.vision_actions)||0} visual action(s)</span>` : ""}<span class="text-xs text-slate-400">${Number(ua.steps_used)||0} actions · synthetic identity only</span></div>`
+        + `<div class="mt-2 space-y-1 text-xs">${(ua.audit||[]).map(x=>`<div class="flex gap-2"><span class="text-slate-500">${Number(x.step)||0}.</span><span class="text-slate-300">${esc(x.action)}${x.target ? " · " + esc(x.target) : ""}${x.coordinates_percent ? ` · ${Number(x.coordinates_percent.x).toFixed(1)}%, ${Number(x.coordinates_percent.y).toFixed(1)}%` : ""}${x.value_key ? " · synthetic " + esc(x.value_key) : ""}</span><span class="${x.status === "ok" || x.status === "completed" ? "text-cyan-400" : "text-amber-400"}">${esc(x.status)}</span></div>`).join("") || `<div class="text-slate-500">${esc(ua.reason || "No UI actions were taken.")}</div>`}</div></div>` : "")
     + (d.score_breakdown && d.score_breakdown.length
         ? `<div class="mt-3 space-y-1">` + d.score_breakdown.map(b=>`<div class="text-xs flex justify-between"><span class="text-slate-400">${esc(b.category)}</span><span class="text-amber-400">+${Number(b.points)||0}</span></div>`).join("") + `</div>` : "")
     + (!d.granted_permissions?.length && !net.urls?.length && !d.services?.length && !fr.ran

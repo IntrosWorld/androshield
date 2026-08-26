@@ -115,6 +115,7 @@ CORS_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
 
 # ── Bounded agentic investigation (off by default) ───────────────
 AGENT_ENABLED=false
+AGENT_WORKFLOW_ENABLED=false
 AGENT_AUTO_RUN=false
 AGENT_PROVIDER=ollama
 AGENT_MAX_STEPS=8
@@ -142,6 +143,7 @@ from any working directory.
 | APKiD | Installed with requirements | `apkid_available: true` |
 | ML classifier | Train a `model.pkl` ([08](08-ml-classifier.md)) | `ml_model_loaded: true` |
 | Agent | `AGENT_ENABLED=true` + a running Ollama with the model pulled | `/api/agent/health` |
+| Guided workflow | `AGENT_ENABLED=true` + `AGENT_WORKFLOW_ENABLED=true` + sandbox AVD | `agentic_workflow.enabled` in `/api/health` |
 | Dynamic | Start the sandbox AVD ([09](09-dynamic-analysis.md)) | `dynamic.available: true` |
 | Frida | `frida-server` running on the emulator | `frida_available: true` |
 

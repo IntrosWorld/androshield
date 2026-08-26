@@ -16,6 +16,7 @@ READ_TOOLS = {
     "inspect_signatures": {"yara", "apkid", "mitre", "certificate"},
     "inspect_score_rationale": {"score"},
     "inspect_attack_surface": {"component"},
+    "inspect_runtime": {"runtime"},
 }
 APPROVAL_TOOLS = {"request_dynamic_analysis", "request_external_intel"}
 
@@ -29,6 +30,7 @@ def tool_specs(include_approval_tools: bool = True) -> list[dict]:
         "inspect_signatures": "Read YARA, APKiD, certificate, and MITRE evidence for the current case.",
         "inspect_score_rationale": "Read the deterministic score breakdown. The tool cannot change the score.",
         "inspect_attack_surface": "Read exported-component attack-surface evidence.",
+        "inspect_runtime": "Read bounded observations from previously approved sandbox actions.",
         "search_evidence": "Case-insensitive substring search over already-extracted evidence.",
     }
     specs = []
@@ -80,7 +82,15 @@ class EvidenceToolbox:
             if arguments:
                 raise AgentSchemaError(f"{name} accepts no arguments")
             kinds = READ_TOOLS[name]
-            return self._result([item for item in self.graph["items"] if item["kind"] in kinds])
+            items = [item for item in self.graph["items"] if item["kind"] in kinds]
+            if not items:
+                items = [{
+                    "id": f"observation:{name}:none",
+                    "kind": "observation",
+                    "summary": f"{name} found no matching extracted evidence",
+                    "data": {"tool": name, "matching_item_count": 0},
+                }]
+            return self._result(items)
         if name == "search_evidence":
             if set(arguments) != {"query"}:
                 raise AgentSchemaError("search_evidence requires only query")

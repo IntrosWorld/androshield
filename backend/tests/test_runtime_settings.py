@@ -34,17 +34,24 @@ class RuntimeSettingsTests(unittest.TestCase):
                 "ollama_base_url": "http://127.0.0.1:11434",
                 "ollama_model": "qwen3:1.7b",
                 "gemini_api_key": "secret-gemini-key",
+                "openrouter_api_key": "secret-openrouter-key",
+                "openrouter_model": "qwen/qwen3-30b-a3b:free",
             })
 
         self.assertEqual(("secret-gemini-key", True), saved["GEMINI_API_KEY"])
+        self.assertEqual(("secret-openrouter-key", True), saved["OPENROUTER_API_KEY"])
         self.assertTrue(result["gemini_key_configured"])
         self.assertNotIn("gemini_api_key", result)
         self.assertNotIn("secret-gemini-key", str(result))
+        self.assertTrue(result["openrouter_key_configured"])
+        self.assertNotIn("openrouter_api_key", result)
+        self.assertNotIn("secret-openrouter-key", str(result))
 
     def test_rejects_credentials_in_ollama_url_and_unknown_fields(self):
         for payload in (
             {"ollama_base_url": "http://user:pass@localhost:11434"},
             {"made_up_setting": True},
+            {"agent_provider": "opencode"},
         ):
             with self.subTest(payload=payload), self.assertRaises(runtime_settings.SettingsError):
                 runtime_settings.update_settings(payload)

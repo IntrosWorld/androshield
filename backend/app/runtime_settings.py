@@ -16,8 +16,12 @@ from . import db
 BOOL_FIELDS = {
     "external_api_enabled": ("EXTERNAL_API_ENABLED", True),
     "agent_enabled": ("AGENT_ENABLED", False),
+    "agent_workflow_enabled": ("AGENT_WORKFLOW_ENABLED", False),
     "agent_auto_run": ("AGENT_AUTO_RUN", False),
     "agent_gemini_review": ("AGENT_GEMINI_REVIEW", False),
+    "agent_ollama_fallback": ("AGENT_OLLAMA_FALLBACK", False),
+    "openrouter_zdr": ("OPENROUTER_ZDR", True),
+    "ui_agent_vision_enabled": ("UI_AGENT_VISION_ENABLED", False),
 }
 INT_FIELDS = {
     "agent_max_steps": ("AGENT_MAX_STEPS", 8, 1, 20),
@@ -32,9 +36,14 @@ TEXT_FIELDS = {
     "ollama_model": ("OLLAMA_MODEL", "qwen3:8b"),
     "ollama_models_dir": ("OLLAMA_MODELS", ""),
     "gemini_model": ("GEMINI_MODEL", "gemini-2.0-flash"),
+    "openrouter_model": ("OPENROUTER_MODEL", "qwen/qwen3-30b-a3b-instruct-2507"),
+    "openrouter_vision_model": ("OPENROUTER_VISION_MODEL", "qwen/qwen3-vl-8b-instruct"),
+    "ui_agent_provider": ("UI_AGENT_PROVIDER", "ollama"),
+    "ui_agent_model": ("UI_AGENT_MODEL", "qwen3-vl:2b-instruct"),
 }
 SECRET_FIELDS = {
     "gemini_api_key": "GEMINI_API_KEY",
+    "openrouter_api_key": "OPENROUTER_API_KEY",
     "virustotal_api_key": "VT_API_KEY",
 }
 MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
@@ -76,6 +85,7 @@ def public_settings() -> dict:
     })
     result.update({key: os.getenv(env, default) for key, (env, default) in TEXT_FIELDS.items()})
     result["gemini_key_configured"] = bool(os.getenv("GEMINI_API_KEY", "").strip())
+    result["openrouter_key_configured"] = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
     result["virustotal_key_configured"] = bool(os.getenv("VT_API_KEY", "").strip())
     result["ollama_cli_available"] = bool(shutil.which("ollama"))
     return result
@@ -94,7 +104,7 @@ def update_settings(payload: dict) -> dict:
     if not isinstance(payload, dict):
         raise SettingsError("settings payload must be an object")
     allowed = set(BOOL_FIELDS) | set(INT_FIELDS) | set(TEXT_FIELDS) | set(SECRET_FIELDS) | {
-        "clear_gemini_api_key", "clear_virustotal_api_key",
+        "clear_gemini_api_key", "clear_openrouter_api_key", "clear_virustotal_api_key",
     }
     unknown = sorted(set(payload) - allowed)
     if unknown:
@@ -117,13 +127,16 @@ def update_settings(payload: dict) -> dict:
         if key not in payload:
             continue
         value = _clean_text(payload[key], key)
-        if key == "agent_provider" and value not in {"ollama", "gemini"}:
-            raise SettingsError("agent_provider must be ollama or gemini")
+        if key == "agent_provider" and value not in {"ollama", "gemini", "openrouter"}:
+            raise SettingsError("agent_provider must be ollama, gemini, or openrouter")
+        if key == "ui_agent_provider" and value not in {"ollama", "gemini", "openrouter"}:
+            raise SettingsError("ui_agent_provider must be ollama, gemini, or openrouter")
         if key == "ollama_base_url":
             parsed = urlparse(value)
             if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
                 raise SettingsError("ollama_base_url must be an HTTP or HTTPS URL without credentials")
-        if key in {"ollama_model", "gemini_model"} and not MODEL_NAME_RE.fullmatch(value):
+        if key in {"ollama_model", "gemini_model", "openrouter_model",
+                   "openrouter_vision_model", "ui_agent_model"} and not MODEL_NAME_RE.fullmatch(value):
             raise SettingsError(f"{key} is not a valid model name")
         persisted[env] = (value, False)
     for key, env in SECRET_FIELDS.items():

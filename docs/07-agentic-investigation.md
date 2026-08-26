@@ -1,7 +1,8 @@
-# 07 — Bounded Agentic Investigation
+# 07 — AI Review and Agentic Investigation
 
-> An LLM that plans its own evidence-gathering, inside a cage built so tightly that the
-> worst it can do is waste a few seconds and produce nothing.
+> AI Review correlates already-extracted findings with read-only evidence tools. The
+> separate Agentic Investigation closes the loop by proposing approved sandbox actions,
+> reviewing new observations, and deciding whether another action is justified.
 
 Sources: [`backend/app/agent/`](../backend/app/agent/) —
 `orchestrator.py`, `evidence.py`, `tools.py`, `schemas.py`, `providers.py`
@@ -9,12 +10,17 @@ Design record: [AGENTIC_AI_PLAN.md](../AGENTIC_AI_PLAN.md)
 
 ---
 
-## 1. Why an agent at all
+## 1. Why AI Review at all
 
 The [report generator](06-genai-reporting.md) is a single-shot summariser: it sees a
 fixed payload and writes prose. A human analyst does not work that way — they look at the
 manifest, form a hunch, chase it into the API list, check whether the network indicators
 support it, and stop when they either have a case or have run out of evidence.
+
+This read-only portion is deliberately named **AI Review**, not agentic investigation:
+it explains and correlates facts the static engine already extracted. The term
+**Agentic Investigation** is reserved for the approval-controlled static → sandbox →
+review feedback loop in §13.
 
 The agent reproduces that loop:
 
@@ -401,6 +407,47 @@ not depend on the agent, and an optional component that costs latency and requir
 local model server should be an explicit choice.
 
 Smoke test: `backend/tools/smoke_agent.py`. Unit tests: `backend/tests/test_agentic.py`.
+
+---
+
+## 13. Optional Agentic Investigation workflow
+
+`AGENT_WORKFLOW_ENABLED=true` exposes a **separate**, disabled-by-default Agentic
+Investigation workflow. It
+does not replace either entry point above and does not alter the manual `/api/dynamic`
+endpoint.
+
+1. `POST /api/agent/workflow/{sample_id}` runs or reuses the read-only investigation and
+   persists one `approval_required` baseline proposal. It never receives or executes an
+   APK.
+2. The analyst re-uploads the same APK and approves its exact proposal ID through
+   `POST /api/agent/workflow/{sample_id}/approve`.
+3. The server verifies SHA256, resolves the action from its own fixed allowlist, runs one
+   pass in the existing isolated sandbox, and stores only a bounded observation.
+4. That observation becomes citable `runtime:*` evidence. The investigator reviews it
+   and either completes or proposes one further approval-controlled pass.
+
+The fixed action classes are baseline, Frida, UI-tree, and vision-assisted UI exploration.
+The model cannot supply duration, device commands, package names, shell input, or arbitrary
+tool parameters. A process-level approval lock rejects double-click replays, completed
+proposal IDs cannot be reused, and every proposal/result/review transition is audited.
+The static score and severity snapshots must still match before execution and are checked
+again after every model review.
+
+Only parsed runtime signals, endpoint indicators, counts, and bounded Frida/UI summaries
+enter the evidence graph. Raw logcat, screenshots, APK content, and host/device paths do
+not. UI actions retain the existing synthetic-data and dedicated-AVD restrictions.
+
+The dashboard polls a bounded status endpoint while an approved action is active. Its
+**Live investigation activity** panel shows sandbox phases, tool selection, the model's
+short stated reason, evidence counts, schema/policy rejections, and completion. This is
+auditable action telemetry, not private chain-of-thought or hidden reasoning tokens.
+
+Vision has two gates: Settings → **Allow screenshot vision** enables the capability
+globally, while **Allow visual-model follow-up** in the Agentic Investigation card grants
+it to one newly-created workflow. That choice is stored in the workflow and cannot be
+changed by the model. Vision is considered only after UI-tree exploration is blocked or
+cannot find a safe action.
 
 ---
 

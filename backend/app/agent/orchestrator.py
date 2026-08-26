@@ -6,7 +6,7 @@ import json
 import os
 import time
 from copy import deepcopy
-from typing import Any
+from typing import Any, Callable
 
 from .evidence import build_evidence, evidence_json, public_evidence_index
 from .providers import AgentProvider, ProviderError, configured_provider
@@ -55,11 +55,18 @@ def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
 
 def agent_health(check_provider: bool = False) -> dict:
     enabled = _env_bool("AGENT_ENABLED", False)
+    provider_name = os.getenv("AGENT_PROVIDER", "ollama").strip().lower()
+    models = {
+        "ollama": os.getenv("OLLAMA_MODEL", "qwen3:8b"),
+        "gemini": os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+        "openrouter": os.getenv("OPENROUTER_MODEL", "qwen/qwen3-30b-a3b-instruct-2507"),
+    }
     result = {
         "enabled": enabled,
         "auto_run": _env_bool("AGENT_AUTO_RUN", False),
-        "provider": os.getenv("AGENT_PROVIDER", "ollama").strip().lower(),
-        "model": os.getenv("OLLAMA_MODEL", "qwen3:8b") if os.getenv("AGENT_PROVIDER", "ollama").strip().lower() == "ollama" else os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+        "provider": provider_name,
+        "model": models.get(provider_name, "unknown"),
+        "ollama_fallback": _env_bool("AGENT_OLLAMA_FALLBACK", False),
         "max_steps": _env_int("AGENT_MAX_STEPS", 8, 1, 20),
         "max_tool_calls": _env_int("AGENT_MAX_TOOL_CALLS", 4, 1, 19),
         "policy_version": POLICY_VERSION,
@@ -78,6 +85,7 @@ def run_investigation(
     *,
     max_steps: int | None = None,
     time_budget_seconds: int | None = None,
+    progress_callback: Callable[[dict], None] | None = None,
 ) -> dict:
     """Run a bounded investigation without mutating ``analysis``."""
     started = time.monotonic()
@@ -112,6 +120,17 @@ def run_investigation(
     invalid_actions = 0
     specs = tool_specs(include_approval_tools=True)
 
+    def progress(phase: str, message: str, **details):
+        if not progress_callback:
+            return
+        event = {"phase": phase[:50], "message": message[:300], **details}
+        try:
+            progress_callback(event)
+        except Exception:
+            pass  # telemetry must never affect the investigation
+
+    progress("review_started", "AI Review started over the bounded evidence index.")
+
     for step_number in range(1, max_steps + 1):
         if time.monotonic() - started > time_budget:
             return _failure("budget_exhausted", "agent time budget exceeded", audit, started,
@@ -119,6 +138,10 @@ def run_investigation(
         call_started = time.monotonic()
         try:
             force_final = tool_calls_used >= max_tool_calls or step_number == max_steps
+            progress(
+                "model_wait", "Waiting for the model to select the next safe step.",
+                step=step_number, force_final=force_final,
+            )
             if force_final and not messages[-1].get("content", "").startswith("TOOL BUDGET COMPLETE"):
                 messages.append({
                     "role": "user",
@@ -126,6 +149,9 @@ def run_investigation(
                         "TOOL BUDGET COMPLETE. No more tools are available. Return the exact "
                         "final JSON now. Cite only evidence IDs returned by tool results: "
                         + json.dumps(sorted(revealed_evidence_ids))
+                        + ". Every hypothesis must contain at least one exact ID from this list. "
+                          "Omit or move to gaps any claim that cannot cite one; never emit an "
+                          "uncited hypothesis."
                     ),
                 })
             decision = provider.next_step(messages, [] if force_final else specs)
@@ -135,7 +161,7 @@ def run_investigation(
                     "step": step_number, "action": "final", "status": "completed",
                     "duration_ms": round((time.monotonic() - call_started) * 1000),
                 })
-                return {
+                completed = {
                     "enabled": True,
                     "status": "completed",
                     "provider": provider.name,
@@ -148,8 +174,18 @@ def run_investigation(
                     "recommended_next_steps": final.recommended_next_steps,
                     "audit": audit,
                 }
+                progress(
+                    "review_completed", "The model completed its evidence-backed review.",
+                    step=step_number, hypothesis_count=len(final.hypotheses),
+                    gap_count=len(final.gaps),
+                )
+                return completed
 
             action = validate_tool_decision(decision)
+            progress(
+                "tool_selected", f"Selected read-only tool: {action.tool}.",
+                step=step_number, action=action.tool, reason=action.reason[:300],
+            )
             if force_final:
                 raise AgentSchemaError("tool budget exhausted; final JSON required")
             fingerprint = json.dumps([action.tool, action.arguments], sort_keys=True, default=str)
@@ -168,6 +204,12 @@ def run_investigation(
                 "evidence_ids": result.get("evidence_ids", []),
                 "duration_ms": round((time.monotonic() - call_started) * 1000),
             })
+            progress(
+                "tool_completed", f"Completed {action.tool}.",
+                step=step_number, action=action.tool,
+                evidence_count=len(result.get("evidence_ids", [])),
+                status=result.get("status", "ok"),
+            )
             messages.extend([
                 {"role": "assistant", "content": evidence_json({
                     "type": "tool", "tool": action.tool, "arguments": action.arguments,
@@ -182,6 +224,10 @@ def run_investigation(
                 "error": str(exc)[:500],
                 "duration_ms": round((time.monotonic() - call_started) * 1000),
             })
+            progress(
+                "action_rejected", "A model action was rejected by policy or schema.",
+                step=step_number, status="invalid", error=str(exc)[:300],
+            )
             if invalid_actions >= max_invalid:
                 return _failure("failed", f"too many invalid model actions: {exc}", audit,
                                 started, provider.name, provider.model)

@@ -14,7 +14,7 @@ import os
 import re
 import time
 
-from . import adb, frida_runner
+from . import adb, frida_runner, ui_agent
 from ..analyzer import iocs as ioc_mod
 
 log = logging.getLogger("dynamic.sandbox")
@@ -292,7 +292,8 @@ def status():
     }
 
 
-def run_dynamic(apk_path, package_name, main_activity, duration=15, use_frida=False, serial=None):
+def run_dynamic(apk_path, package_name, main_activity, duration=15, use_frida=False,
+                serial=None, use_ui_agent=False, ui_agent_mode="tree"):
     """Install, run, observe, and uninstall the APK in the attached emulator.
 
     When use_frida is True the app is launched *under Frida* (so API hooks fire) instead
@@ -309,6 +310,7 @@ def run_dynamic(apk_path, package_name, main_activity, duration=15, use_frida=Fa
     duration = max(5, min(int(duration or 15), 120))
     result = {"available": True, "ran": False, "serial": serial,
               "package": package_name, "duration": duration, "use_frida": use_frida,
+              "use_ui_agent": use_ui_agent, "ui_agent_mode": ui_agent_mode,
               "steps": []}
 
     def step(msg):
@@ -371,6 +373,11 @@ def run_dynamic(apk_path, package_name, main_activity, duration=15, use_frida=Fa
                 result["consent_dismissed"] = consent
                 step(f"dismissed consent: {', '.join(consent)}")
                 activate(package_name, triggers, serial)
+            if use_ui_agent:
+                step("bounded UI agent exploring with synthetic profile data")
+                result["ui_agent"] = ui_agent.explore(package_name, serial, mode=ui_agent_mode)
+                step(f"UI agent: {result['ui_agent'].get('status')} "
+                     f"({result['ui_agent'].get('steps_used', 0)} action(s))")
             time.sleep(duration)
             dismiss_consent_dialogs(serial, rounds=2)
 

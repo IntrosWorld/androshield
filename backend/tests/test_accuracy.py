@@ -108,6 +108,14 @@ class IocAccuracyTests(unittest.TestCase):
 
 
 class YaraAccuracyTests(unittest.TestCase):
+    def test_invalid_unicode_from_malformed_dex_does_not_abort_scan(self):
+        result = yara_scan.scan(
+            ["ordinary text", "malformed\ud800string"],
+            [],
+            "org.example.robust",
+        )
+        self.assertNotIn("error", result)
+
     def test_generic_sms_and_http_library_strings_do_not_trigger_otp_stealer(self):
         result = yara_scan.scan([
             "Landroid/telephony/SmsManager;",
@@ -207,25 +215,30 @@ class RiskCalibrationTests(unittest.TestCase):
         self.assertGreaterEqual(correlation["points"], 16)
         self.assertIn("SMS interception + outbound channel", correlation["detail"])
 
-    def test_single_virustotal_engine_does_not_force_high_severity(self):
+    def test_virustotal_does_not_change_local_score(self):
         analysis = {"risk_score": 0, "severity": "Low", "score_breakdown": []}
         risk_scoring.apply_virustotal(analysis, {
             "queried": True,
-            "file": {"found": True, "malicious": 1, "suspicious": 0},
-            "flagged_domains": [],
+            "file": {"found": True, "malicious": 25, "suspicious": 4},
+            "flagged_domains": [{"domain": "example.test"}],
         })
-        self.assertEqual(4, analysis["risk_score"])
+        self.assertEqual(0, analysis["risk_score"])
         self.assertEqual("Low", analysis["severity"])
+        self.assertEqual([], analysis["score_breakdown"])
+        self.assertTrue(analysis["virustotal"]["queried"])
 
-    def test_multi_engine_agreement_sets_critical_floor(self):
-        analysis = {"risk_score": 0, "severity": "Low", "score_breakdown": []}
+    def test_virustotal_preserves_existing_local_verdict(self):
+        analysis = {"risk_score": 48, "severity": "High", "score_breakdown": [
+            {"category": "Local evidence", "points": 48, "detail": "test"},
+        ]}
         risk_scoring.apply_virustotal(analysis, {
             "queried": True,
             "file": {"found": True, "malicious": 5, "suspicious": 0},
             "flagged_domains": [],
         })
-        self.assertEqual(71, analysis["risk_score"])
-        self.assertEqual("Critical", analysis["severity"])
+        self.assertEqual(48, analysis["risk_score"])
+        self.assertEqual("High", analysis["severity"])
+        self.assertEqual(1, len(analysis["score_breakdown"]))
 
     def test_ml_below_validated_threshold_does_not_inflate_score(self):
         analysis = {"risk_score": 9, "severity": "Low", "score_breakdown": []}
@@ -276,7 +289,7 @@ class VerdictPolicyTests(unittest.TestCase):
         self.assertEqual("Likely Malicious", verdict)
         self.assertEqual("Likely Malicious", _template_report(analysis)["threat_assessment"])
 
-    def test_multi_engine_detection_can_confirm(self):
+    def test_external_detection_cannot_override_local_verdict(self):
         analysis = {
             "valid_apk": True,
             "risk_score": 90,
@@ -284,8 +297,8 @@ class VerdictPolicyTests(unittest.TestCase):
             "virustotal": {"file": {"found": True, "malicious": 8}},
         }
         verdict, basis = _evidence_assessment(analysis)
-        self.assertEqual("Confirmed Malicious", verdict)
-        self.assertIn("8 VirusTotal engines", basis)
+        self.assertEqual("Likely Malicious", verdict)
+        self.assertIn("locally extracted evidence", basis)
 
     def test_model_output_is_schema_checked_and_cannot_override_verdict(self):
         analysis = {"valid_apk": True, "risk_score": 80, "severity": "Critical"}

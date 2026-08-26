@@ -236,53 +236,13 @@ def apply_ml(analysis: dict, ml: dict) -> dict:
 
 
 def apply_virustotal(analysis: dict, vt: dict) -> dict:
-    """Fold a VirusTotal result into an existing analysis: add a score-breakdown
-    entry, recompute the total/severity, and apply a severity floor when multiple
-    engines flag the sample. Mutates and returns `analysis`."""
+    """Attach optional VirusTotal context without changing the local verdict.
+
+    The platform's score and severity are intentionally derived only from its own
+    static, ML, and sandbox evidence.  VirusTotal is displayed as external
+    corroboration and must never become a hidden scoring dependency.
+    """
     analysis["virustotal"] = vt
-    if not vt or not vt.get("queried"):
-        return analysis
-
-    file_res = vt.get("file", {}) or {}
-    malicious = file_res.get("malicious", 0) if file_res.get("found") else 0
-    suspicious = file_res.get("suspicious", 0) if file_res.get("found") else 0
-    flagged_domains = len(vt.get("flagged_domains", []) or [])
-
-    points = 0
-    bits = []
-    if malicious:
-        points += min(malicious * 4, 40)
-        bits.append(f"{malicious} engine(s) malicious")
-    if suspicious:
-        points += min(suspicious * 2, 10)
-        bits.append(f"{suspicious} suspicious")
-    if flagged_domains:
-        points += min(flagged_domains * 5, 15)
-        bits.append(f"{flagged_domains} flagged domain(s)")
-
-    if points:
-        analysis.setdefault("score_breakdown", []).append({
-            "category": "VirusTotal detections",
-            "points": points,
-            "detail": ", ".join(bits) + (f" — {file_res.get('threat_label')}"
-                                         if file_res.get("threat_label") else ""),
-        })
-        total = min(sum(b["points"] for b in analysis["score_breakdown"]), 100)
-        # A single engine can be a false positive. Independent agreement establishes a
-        # minimum confidence band. Add the adjustment as an explicit contribution so
-        # the numeric score, severity, and itemised breakdown remain consistent.
-        floor = 71 if malicious >= 5 else (41 if malicious >= 3 else 0)
-        if floor and total < floor:
-            adjustment = floor - total
-            analysis["score_breakdown"].append({
-                "category": "Multi-engine consensus floor",
-                "points": adjustment,
-                "detail": f"{malicious} independent engines agree",
-            })
-            total = floor
-        analysis["risk_score"] = total
-        analysis["severity"] = severity_for(total)
-
     return analysis
 
 

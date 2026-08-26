@@ -33,19 +33,15 @@ present; a heuristic score alone can support Likely Malicious, never confirmatio
 def _evidence_assessment(analysis: dict) -> tuple[str, str]:
     """Return a defensible verdict and its evidence basis.
 
-    Static heuristics can be highly suspicious but cannot confirm maliciousness. We
-    reserve confirmation for independent multi-engine corroboration; dynamic results are
-    currently reported by a separate endpoint and are therefore not available here.
+    This assessment is deliberately based on locally extracted evidence. External
+    intelligence may be shown to an analyst, but cannot override the platform's score
+    or verdict. Dynamic results are currently reported by a separate endpoint.
     """
     if not analysis.get("valid_apk", True) or analysis.get("risk_score") is None:
         return "Inconclusive", "analysis did not complete"
-    vt_file = (analysis.get("virustotal") or {}).get("file") or {}
-    malicious = vt_file.get("malicious", 0) if vt_file.get("found") else 0
-    if malicious >= 5:
-        return "Confirmed Malicious", f"{malicious} VirusTotal engines reported malicious"
     severity = analysis.get("severity", "Low")
     if severity in ("High", "Critical"):
-        return "Likely Malicious", "high-confidence heuristic/corroborated evidence"
+        return "Likely Malicious", "high-confidence locally extracted evidence"
     if analysis.get("analysis_quality") == "partial":
         return "Inconclusive", "partial analysis; DEX control-flow could not be recovered"
     if severity == "Medium":
@@ -104,7 +100,9 @@ def _findings_payload(analysis: dict) -> dict:
             if analysis.get("ml", {}).get("available") and "malware_probability" in analysis.get("ml", {})
             else None
         ),
-        "virustotal": _vt_summary(analysis.get("virustotal")),
+        # Kept as clearly separated analyst context; _evidence_assessment and the
+        # deterministic score never consume it.
+        "external_corroboration": _vt_summary(analysis.get("virustotal")),
         "agentic_investigation": _agentic_summary(analysis.get("agentic")),
     }
 

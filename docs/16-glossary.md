@@ -207,7 +207,7 @@ agent reasons over. Built from a `deepcopy`.
 **Evidence ID** — A stable `kind:slug` identifier. Hypotheses must cite IDs the model
 genuinely retrieved, or validation rejects them.
 
-**Multi-engine consensus floor** — A minimum severity established by independent AV
+**Multi-engine consensus floor (removed)** — A legacy scoring rule that allowed independent AV
 agreement (≥3 engines ⇒ 41, ≥5 ⇒ 71), applied as an explicit breakdown entry so the sum
 invariant holds.
 

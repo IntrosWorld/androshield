@@ -72,6 +72,7 @@ class FrontendContractTests(unittest.TestCase):
 
         self.assertIn("btn-primary", tag_with_id(HTML, "analyze-btn"))
         self.assertIn("btn-primary", tag_with_id(HTML, "agent-run-btn"))
+        self.assertIn("btn-secondary", tag_with_id(HTML, "workflow-start-btn"))
         self.assertIn("btn-warning", tag_with_id(HTML, "dyn-run-btn"))
         for element_id in ("pdf-btn", "ioc-csv-btn", "ioc-json-btn"):
             self.assertIn("btn-secondary", tag_with_id(HTML, element_id))
@@ -96,14 +97,43 @@ class FrontendContractTests(unittest.TestCase):
         self.assertRegex(dialog, r'aria-labelledby=["\']settings-title["\']')
         self.assertIn('role="status"', tag_with_id(HTML, "settings-status"))
         for element_id in (
-            "setting-external-enabled", "setting-agent-enabled", "setting-provider",
+            "setting-external-enabled", "setting-agent-enabled",
+            "setting-agent-workflow-enabled", "setting-provider",
             "setting-ollama-url", "setting-ollama-model", "setting-gemini-key",
+            "setting-openrouter-model", "setting-openrouter-zdr",
+            "setting-openrouter-key", "setting-ui-provider", "setting-ui-model",
             "setting-vt-key", "setting-gguf-path", "settings-import-model",
         ):
             tag_with_id(HTML, element_id)
         self.assertIn('fetch(`${API}/api/settings`', JS)
         self.assertIn('method: "PUT"', JS)
         self.assertIn('type="password"', HTML)
+        self.assertIn('<option value="openrouter">OpenRouter API</option>', HTML)
+        self.assertIn('if (openrouterKey) data.openrouter_api_key = openrouterKey', JS)
+
+    def test_guided_workflow_is_separate_and_explicitly_approved(self):
+        tag_with_id(HTML, "workflow-card")
+        tag_with_id(HTML, "workflow-body")
+        self.assertIn('role="status"', tag_with_id(HTML, "workflow-status"))
+        self.assertIn("Agentic Investigation", HTML)
+        self.assertIn("data-workflow-approve", JS)
+        self.assertIn("Approval was not sent: re-select the original APK", JS)
+        self.assertIn('/api/agent/workflow/${encodeURIComponent(currentId)}', JS)
+        self.assertIn("Live investigation activity", JS)
+        self.assertIn("not private chain-of-thought", JS)
+        tag_with_id(HTML, "workflow-vision")
+
+    def test_ai_review_progress_identifies_actual_provider(self):
+        self.assertIn('provider === "ollama" ? "locally through Ollama"', JS)
+        self.assertIn("through hosted ${provider}", JS)
+        self.assertNotIn("CPU-only local inference", JS)
+
+    def test_dynamic_ui_agent_exposes_tree_and_vision_modes(self):
+        mode = tag_with_id(HTML, "dyn-ui-agent-mode")
+        self.assertIn('value="tree"', HTML)
+        self.assertIn('value="vision"', HTML)
+        self.assertIn("disabled", mode)
+        self.assertIn('fd.append("ui_agent_mode", uiAgentMode)', JS)
         self.assertIn('if (geminiKey) data.gemini_api_key = geminiKey', JS)
 
     def test_optional_components_are_explicit_and_source_attributed(self):

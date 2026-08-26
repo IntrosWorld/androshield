@@ -500,14 +500,34 @@
           <article id="agent-card" class="evidence-panel lg:col-span-3">
             <div class="panel-head flex-wrap">
               <div>
-                <h3 class="panel-title"><i class="ti ti-sparkles" aria-hidden="true"></i>Agentic evidence investigation</h3>
-                <p class="text-xs text-slate-500 mt-1">Allowlisted evidence tools only. The agent cannot execute the APK or alter its score.</p>
+                <h3 class="panel-title"><i class="ti ti-sparkles" aria-hidden="true"></i>AI Review</h3>
+                <p class="text-xs text-slate-500 mt-1">Explains and correlates extracted evidence. It is not an autonomous detector and cannot alter the score.</p>
               </div>
-              <button id="agent-run-btn" class="btn-primary" disabled>Run AI investigation</button>
+              <button id="agent-run-btn" class="btn-primary" disabled>Run AI Review</button>
             </div>
-            <div id="agent-body" class="panel-body text-sm text-slate-400">Agentic investigation is not enabled for this server.</div>
+            <div id="agent-body" class="panel-body text-sm text-slate-400">AI Review is not enabled for this server.</div>
           </article>
         </div>
+        <article id="workflow-card" class="evidence-panel mt-4">
+          <div class="panel-head flex-wrap">
+            <div>
+              <h3 class="panel-title"><i class="ti ti-route-2" aria-hidden="true"></i>Agentic Investigation <span class="chip chip-warning ml-1">Experimental</span></h3>
+              <p class="text-xs text-slate-500 mt-1">Plans, runs, and reviews approval-controlled sandbox actions in a closed feedback loop.</p>
+            </div>
+            <button id="workflow-start-btn" class="btn-secondary" type="button" disabled>Start Agentic Investigation</button>
+          </div>
+          <div class="mx-5 mt-4 flex flex-wrap items-center gap-3">
+            <label class="control text-sm text-slate-300 flex items-center gap-2" title="Allows a vision-assisted follow-up only when UI-tree exploration cannot progress">
+              <input type="checkbox" id="workflow-vision" class="accent-cyan-500" disabled>
+              Allow visual-model follow-up
+            </label>
+            <span id="workflow-vision-state" class="text-xs text-slate-500">Checking vision availability…</span>
+            <button id="workflow-settings-btn" class="btn-secondary" type="button"><i class="ti ti-settings" aria-hidden="true"></i>Vision settings</button>
+          </div>
+          <div id="workflow-status" class="hidden mx-5 mt-4 rounded-lg border px-3 py-2 text-xs" role="status" aria-live="polite"></div>
+          <div id="workflow-live" class="hidden mx-5 mt-4 rounded-lg border border-cyan-400/20 bg-slate-950/20 p-3" aria-live="polite"></div>
+          <div id="workflow-body" class="panel-body text-sm text-slate-400">Agentic Investigation is not enabled for this server.</div>
+        </article>
       </section>
 
       <section id="static-evidence" class="workspace-section">
@@ -547,8 +567,11 @@
               <label class="text-xs text-slate-400">Device<br><select id="dyn-device" class="control mt-1 text-sm min-w-[12rem] max-w-[16rem]"></select></label>
               <label class="text-xs text-slate-400">Observation window<br><select id="dyn-duration" class="control mt-1 text-sm"><option value="10">10 seconds</option><option value="15" selected>15 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option></select></label>
               <label class="control text-sm text-slate-300 flex items-center gap-2"><input type="checkbox" id="dyn-frida" class="accent-cyan-500">Frida hooks</label>
+              <label class="control text-sm text-slate-300 flex items-center gap-2" title="Uses synthetic test data and runs only on the selected sandbox AVD"><input type="checkbox" id="dyn-ui-agent" class="accent-cyan-500" disabled>AI UI Explorer</label>
+              <label class="text-xs text-slate-400">Exploration mode<br><select id="dyn-ui-agent-mode" class="control mt-1 text-sm" disabled><option value="tree" selected>UI tree · faster</option><option value="vision">Vision assisted</option></select></label>
               <button id="dyn-run-btn" class="btn-warning"><i class="ti ti-player-play" aria-hidden="true"></i>Run in emulator</button>
             </div>
+            <p id="dyn-agent-note" class="text-xs text-slate-500 mt-3">The UI agent is disabled on this server. It never uses real credentials or payment data.</p>
             <div id="dyn-loading" class="hidden mt-4 text-sm text-slate-400" role="status" aria-live="polite"><span class="inline-block w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin align-middle"></span><span id="dyn-loading-text" class="align-middle ml-2">Running in emulator…</span></div>
             <div id="dyn-results" class="hidden mt-4"></div>
           </div>
@@ -580,8 +603,12 @@
           <p>Agent actions remain bounded to extracted evidence and cannot execute an APK.</p>
           <div class="settings-grid">
             <label class="toggle-row field-wide" for="setting-agent-enabled">
-              <span class="toggle-copy"><strong>Agentic evidence investigation</strong><span>Allow the selected model to choose read-only evidence tools.</span></span>
+              <span class="toggle-copy"><strong>AI Review</strong><span>Allow the selected model to explain and correlate extracted evidence using read-only tools.</span></span>
               <input id="setting-agent-enabled" name="agent_enabled" type="checkbox" />
+            </label>
+            <label class="toggle-row field-wide" for="setting-agent-workflow-enabled">
+              <span class="toggle-copy"><strong>Agentic Investigation</strong><span>Experimental closed-loop planning and approval-controlled runtime follow-up.</span></span>
+              <input id="setting-agent-workflow-enabled" name="agent_workflow_enabled" type="checkbox" />
             </label>
             <label class="toggle-row" for="setting-agent-auto-run">
               <span class="toggle-copy"><strong>Run after static analysis</strong><span>Start investigation automatically for valid APKs.</span></span>
@@ -598,10 +625,25 @@
           <h3 id="settings-provider-title">Investigation model</h3>
           <p>Select the planner and tune its bounded runtime limits.</p>
           <div class="settings-grid">
-            <div class="field"><label for="setting-provider">Provider</label><select id="setting-provider" class="control"><option value="ollama">Ollama, local</option><option value="gemini">Gemini API</option></select></div>
+            <div class="field"><label for="setting-provider">Provider</label><select id="setting-provider" class="control"><option value="ollama">Ollama, local</option><option value="openrouter">OpenRouter API</option><option value="gemini">Gemini API</option></select></div>
             <div class="field"><label for="setting-ollama-model">Ollama model</label><input id="setting-ollama-model" class="control" type="text" autocomplete="off" placeholder="qwen3:1.7b" /></div>
             <div class="field field-wide"><label for="setting-ollama-url">Ollama server URL</label><input id="setting-ollama-url" class="control" type="url" autocomplete="off" placeholder="http://127.0.0.1:11434" /><p class="field-help">Use a trusted HTTP or HTTPS endpoint. Credentials in the URL are rejected.</p></div>
             <div class="field"><label for="setting-gemini-model">Gemini model</label><input id="setting-gemini-model" class="control" type="text" autocomplete="off" placeholder="gemini-2.0-flash" /></div>
+            <div class="field"><label for="setting-openrouter-model">OpenRouter text model</label><input id="setting-openrouter-model" class="control" type="text" autocomplete="off" placeholder="qwen/qwen3-30b-a3b-instruct-2507" /></div>
+            <label class="toggle-row" for="setting-openrouter-zdr">
+              <span class="toggle-copy"><strong>Require zero data retention</strong><span>Route only through OpenRouter endpoints marked ZDR.</span></span>
+              <input id="setting-openrouter-zdr" name="openrouter_zdr" type="checkbox" />
+            </label>
+            <label class="toggle-row" for="setting-ollama-fallback">
+              <span class="toggle-copy"><strong>Local fallback</strong><span>Use Ollama only if an OpenRouter request fails and the local model is available.</span></span>
+              <input id="setting-ollama-fallback" name="agent_ollama_fallback" type="checkbox" />
+            </label>
+            <div class="field"><label for="setting-ui-provider">UI exploration provider</label><select id="setting-ui-provider" class="control"><option value="ollama">Ollama, local</option><option value="openrouter">OpenRouter API</option><option value="gemini">Gemini API</option></select></div>
+            <div class="field"><label for="setting-ui-model">UI exploration model</label><input id="setting-ui-model" class="control" type="text" autocomplete="off" placeholder="qwen/qwen3-vl-8b-instruct" /></div>
+            <label class="toggle-row field-wide" for="setting-ui-vision-enabled">
+              <span class="toggle-copy"><strong>Allow screenshot vision</strong><span>Send sandbox screenshots containing synthetic test data to the selected vision provider.</span></span>
+              <input id="setting-ui-vision-enabled" name="ui_agent_vision_enabled" type="checkbox" />
+            </label>
             <div class="field"><label for="setting-context-tokens">Context tokens</label><input id="setting-context-tokens" class="control" type="number" min="2048" max="32768" step="1" /></div>
             <div class="field"><label for="setting-max-steps">Maximum agent steps</label><input id="setting-max-steps" class="control" type="number" min="1" max="20" step="1" /></div>
             <div class="field"><label for="setting-max-tools">Maximum tool calls</label><input id="setting-max-tools" class="control" type="number" min="1" max="19" step="1" /></div>
@@ -612,13 +654,14 @@
 
         <section class="settings-section" aria-labelledby="settings-api-title">
           <h3 id="settings-api-title">External services</h3>
-          <p>Only extracted findings are sent to Gemini. Raw APK content never leaves the static pipeline.</p>
+          <p>Only extracted findings are sent to hosted models. Raw APK content never leaves the static pipeline.</p>
           <div class="settings-grid">
             <label class="toggle-row field-wide" for="setting-external-enabled">
-              <span class="toggle-copy"><strong>Enable external API calls</strong><span>Master control for Gemini reporting, Gemini planning, and VirusTotal lookups.</span></span>
+              <span class="toggle-copy"><strong>Enable external API calls</strong><span>Master control for OpenRouter, Gemini, and VirusTotal requests.</span></span>
               <input id="setting-external-enabled" name="external_api_enabled" type="checkbox" />
             </label>
             <div class="field"><label for="setting-gemini-key">Gemini API key <span id="gemini-key-state" class="secret-state"></span></label><input id="setting-gemini-key" class="control" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved key" /><p class="field-help"><label><input id="clear-gemini-key" type="checkbox" /> Clear saved key</label></p></div>
+            <div class="field"><label for="setting-openrouter-key">OpenRouter API key <span id="openrouter-key-state" class="secret-state"></span></label><input id="setting-openrouter-key" class="control" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved key" /><p class="field-help"><label><input id="clear-openrouter-key" type="checkbox" /> Clear saved key</label></p></div>
             <div class="field"><label for="setting-vt-key">VirusTotal API key <span id="vt-key-state" class="secret-state"></span></label><input id="setting-vt-key" class="control" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved key" /><p class="field-help"><label><input id="clear-vt-key" type="checkbox" /> Clear saved key</label></p></div>
           </div>
         </section>

@@ -70,7 +70,10 @@ def scan(dex_strings, permissions=None, package_name=""):
     blob_parts += [f"MANIFEST_PERMISSION:{p}" for p in (permissions or [])]
     if package_name:
         blob_parts.append(package_name)
-    blob = "\n".join(p for p in blob_parts if p)
+    # Malformed/obfuscated DEX files can expose lone UTF-16 surrogate code points.
+    # YARA's Python binding rejects those while encoding a str.  Encode explicitly
+    # with replacement so one corrupt string cannot discard every signature result.
+    blob = "\n".join(p for p in blob_parts if p).encode("utf-8", "replace")
 
     matches = []
     score = 0

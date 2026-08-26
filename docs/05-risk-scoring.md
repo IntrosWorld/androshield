@@ -39,7 +39,7 @@ flowchart TD
     SUM --> SEV["severity_for(total)"]
 
     SUM --> MLF["apply_ml — up to +20"]
-    MLF --> VTF["apply_virustotal — up to +65<br/>+ multi-engine consensus floor"]
+    MLF --> VTF["apply_virustotal — external context only<br/>no score or verdict change"]
     VTF --> FIN["final risk_score + severity"]
 
     EXC["Exported components<br/>NOT scored"] -.->|report only| FIN
@@ -222,42 +222,22 @@ the goal.**
 
 ---
 
-## 6. VirusTotal fusion
+## 6. Optional VirusTotal corroboration
 
 `apply_virustotal(analysis, vt)` runs **after** the rule engine, in `main.py`, and only
-when `VT_API_KEY` is configured. Without a key it is a silent no-op.
-
-### Points
-
-| Signal | Points | Cap |
-|---|---|---:|
-| Engines reporting *malicious* | `4 × count` | 40 |
-| Engines reporting *suspicious* | `2 × count` | 10 |
-| Flagged domains among extracted IOCs | `5 × count` | 15 |
-
-### The multi-engine consensus floor
+when `VT_API_KEY` is configured. Without a key it is a silent no-op. When configured,
+the response is attached to `analysis["virustotal"]` for a separate analyst-facing
+panel and report context.
 
 ```python
-floor = 71 if malicious >= 5 else (41 if malicious >= 3 else 0)
-if floor and total < floor:
-    adjustment = floor - total
-    score_breakdown.append({
-        "category": "Multi-engine consensus floor",
-        "points": adjustment,
-        "detail": f"{malicious} independent engines agree",
-    })
-    total = floor
+def apply_virustotal(analysis, vt):
+    analysis["virustotal"] = vt
+    return analysis
 ```
 
-**Rationale.** A single AV engine can be a false positive; independent agreement between
-several cannot plausibly be. If five engines call a sample malicious, no combination of
-our own heuristics should be able to report it as Medium.
-
-**The implementation detail that matters:** the floor is applied as an **explicit
-breakdown entry**, not as a silent override of `severity`. This preserves the core
-invariant `sum(breakdown points) == risk_score`. A floor that quietly rewrote the
-severity string while leaving the number at 35 would produce a self-contradictory
-report — a "Critical" verdict next to a breakdown adding up to 35.
+**Invariant:** external intelligence contributes zero points and cannot change severity
+or the deterministic evidence assessment. The platform remains fully functional and
+produces the same local verdict when VirusTotal is absent, unavailable, or disagrees.
 
 ---
 

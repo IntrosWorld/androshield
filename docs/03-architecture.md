@@ -183,7 +183,7 @@ sequenceDiagram
     SA-->>API: analysis dict
     API->>VT: lookup(sha256, domains, ips)
     VT-->>API: engine verdicts
-    API->>RS: apply_virustotal → rescore + consensus floor
+    API->>RS: apply_virustotal → attach external context only
     opt AGENT_ENABLED and AGENT_AUTO_RUN
         API->>AG: run_investigation(deepcopy)
         AG-->>API: evidence-cited hypotheses
