@@ -6,6 +6,7 @@ analyzer skips ML, so the platform always runs on rules alone.
 """
 import logging
 import os
+import threading
 import warnings
 
 from . import features as F
@@ -20,6 +21,7 @@ _MODEL_PATH = os.getenv("APK_STATIC_MODEL_PATH", "").strip() or (
 )
 _bundle = None
 _load_attempted = False
+_load_lock = threading.Lock()
 
 
 def model_path() -> str:
@@ -36,30 +38,34 @@ def _load():
     global _bundle, _load_attempted
     if _load_attempted:
         return _bundle
-    _load_attempted = True
-    try:
-        import joblib
-        # scikit-learn emits an InconsistentVersionWarning for the Kaggle artifact.
-        # We validate the bundle schema below and cover inference with regression tests;
-        # suppress only this noisy persistence warning, not arbitrary warnings.
+    with _load_lock:
+        if _load_attempted:
+            return _bundle
         try:
-            from sklearn.exceptions import InconsistentVersionWarning
-        except ImportError:  # pragma: no cover - older supported sklearn
-            InconsistentVersionWarning = Warning
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", InconsistentVersionWarning)
-            candidate = joblib.load(_MODEL_PATH)
-        if not isinstance(candidate, dict) or "model" not in candidate:
-            raise ValueError("unsupported ML model bundle")
-        if candidate.get("feature_kind") == "apk_static_evidence":
-            if "vectorizer" not in candidate:
-                raise ValueError("rich model bundle is missing its vectorizer")
-        elif "vocabulary" not in candidate:
-            raise ValueError("legacy model bundle is missing its permission vocabulary")
-        _bundle = candidate
-    except Exception as e:
-        log.error("Failed to load ML model: %s", e)
-        _bundle = None
+            import joblib
+            # scikit-learn emits an InconsistentVersionWarning for the Kaggle artifact.
+            # We validate the bundle schema below and cover inference with regression tests;
+            # suppress only this noisy persistence warning, not arbitrary warnings.
+            try:
+                from sklearn.exceptions import InconsistentVersionWarning
+            except ImportError:  # pragma: no cover - older supported sklearn
+                InconsistentVersionWarning = Warning
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", InconsistentVersionWarning)
+                candidate = joblib.load(_MODEL_PATH)
+            if not isinstance(candidate, dict) or "model" not in candidate:
+                raise ValueError("unsupported ML model bundle")
+            if candidate.get("feature_kind") == "apk_static_evidence":
+                if "vectorizer" not in candidate:
+                    raise ValueError("rich model bundle is missing its vectorizer")
+            elif "vocabulary" not in candidate:
+                raise ValueError("legacy model bundle is missing its permission vocabulary")
+            _bundle = candidate
+        except Exception as e:
+            log.error("Failed to load ML model: %s", e)
+            _bundle = None
+        finally:
+            _load_attempted = True
     return _bundle
 
 

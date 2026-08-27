@@ -1,8 +1,10 @@
 import os
 import sqlite3
+import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
@@ -10,7 +12,10 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException, UploadFile
 
 from app import db, main
+from app.analyzer import yara_scan
 from app.analysis_service import AnalysisCapacity
+from app.intel import apkid_scan
+from app.ml import classifier
 
 
 def _analysis(index: int) -> dict:
@@ -100,6 +105,16 @@ class SqliteScalabilityTests(unittest.TestCase):
 
         self.assertEqual("queued", db.get_analysis_job(job["id"])["status"])
 
+    def test_batch_queue_reservation_is_atomic(self):
+        jobs = db.create_analysis_jobs(
+            ["first.apk", "second.apk"], active_limit=2,
+        )
+
+        self.assertEqual(2, len(jobs))
+        self.assertEqual({"first.apk", "second.apk"}, {job["filename"] for job in jobs})
+        self.assertEqual(2, db.count_active_analysis_jobs())
+        self.assertIsNone(db.create_analysis_jobs(["third.apk"], active_limit=2))
+
     def test_database_health_does_not_expose_connection_details(self):
         health = db.database_health()
         self.assertEqual("sqlite", health["backend"])
@@ -146,6 +161,94 @@ class CapacityTests(unittest.TestCase):
         self.assertEqual({"limit": 1, "active": 0, "waiting": 0}, capacity.snapshot())
 
 
+class ConcurrentLazyLoadTests(unittest.TestCase):
+    @staticmethod
+    def _run_concurrent(loader, started, release):
+        results = []
+        threads = [threading.Thread(target=lambda: results.append(loader())) for _ in range(2)]
+        threads[0].start()
+        if not started.wait(1):
+            release.set()
+            raise AssertionError("lazy loader did not start")
+        threads[1].start()
+        time.sleep(0.02)
+        release.set()
+        for thread in threads:
+            thread.join(1)
+        return results
+
+    def test_yara_rules_are_published_only_after_compile_finishes(self):
+        started, release = threading.Event(), threading.Event()
+        compiled = object()
+        fake_yara = types.ModuleType("yara")
+
+        def compile_rules(**_kwargs):
+            started.set()
+            release.wait(1)
+            return compiled
+
+        fake_yara.compile = compile_rules
+        with patch.dict(sys.modules, {"yara": fake_yara}), \
+             patch.object(yara_scan, "_compiled", None), \
+             patch.object(yara_scan, "_load_attempted", False):
+            results = self._run_concurrent(yara_scan._rules, started, release)
+
+        self.assertEqual([compiled, compiled], results)
+
+    def test_apkid_scanner_is_published_only_after_rules_finish_loading(self):
+        started, release = threading.Event(), threading.Event()
+        fake_package = types.ModuleType("apkid")
+        fake_package.__path__ = []
+        fake_apkid = types.ModuleType("apkid.apkid")
+        fake_rules = types.ModuleType("apkid.rules")
+
+        class Options:
+            def __init__(self, **_kwargs):
+                pass
+
+        class Scanner:
+            def __init__(self, rules, _options):
+                self.rules = rules
+
+        class RulesManager:
+            def load(self):
+                started.set()
+                release.wait(1)
+                return object()
+
+        fake_apkid.Options, fake_apkid.Scanner = Options, Scanner
+        fake_rules.RulesManager = RulesManager
+        with patch.dict(sys.modules, {
+            "apkid": fake_package, "apkid.apkid": fake_apkid, "apkid.rules": fake_rules,
+        }), patch.object(apkid_scan, "_scanner", None), \
+             patch.object(apkid_scan, "_load_attempted", False):
+            results = self._run_concurrent(apkid_scan._get_scanner, started, release)
+
+        self.assertEqual(2, len(results))
+        self.assertIs(results[0], results[1])
+
+    def test_ml_bundle_is_published_only_after_deserialization_finishes(self):
+        import joblib
+        # Warm scikit-learn's own lazy imports on the main thread; this test targets
+        # our bundle publication lock, not SciPy's module initialisation.
+        from sklearn.exceptions import InconsistentVersionWarning  # noqa: F401
+
+        started, release = threading.Event(), threading.Event()
+        bundle = {"model": object(), "vocabulary": []}
+
+        def load_bundle(_path):
+            started.set()
+            release.wait(1)
+            return bundle
+
+        with patch.object(joblib, "load", side_effect=load_bundle), \
+             patch.object(classifier, "_bundle", None), \
+             patch.object(classifier, "_load_attempted", False):
+            results = self._run_concurrent(classifier._load, started, release)
+
+        self.assertEqual([bundle, bundle], results)
+
+
 class AnalysisJobTests(unittest.IsolatedAsyncioTestCase):
     async def test_queue_limit_rejects_excess_uploads_before_spooling(self):
         upload = UploadFile(filename="sample.apk", file=BytesIO(b"unused"))
@@ -178,6 +281,57 @@ class AnalysisJobTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("completed", completed["status"])
             self.assertEqual("sample-result", completed["sample_id"])
             self.assertFalse(os.path.exists(apk_path))
+
+    async def test_folder_batch_queues_each_apk_through_existing_workers(self):
+        uploads = [
+            UploadFile(filename="folder/first.apk", file=BytesIO(b"first")),
+            UploadFile(filename="folder/second.apk", file=BytesIO(b"second")),
+        ]
+        handles = [tempfile.NamedTemporaryFile(suffix=".apk", delete=False) for _ in uploads]
+        paths = [handle.name for handle in handles]
+        for handle in handles:
+            handle.close()
+        jobs = [
+            {"id": "job-1", "filename": "first.apk", "status": "queued"},
+            {"id": "job-2", "filename": "second.apk", "status": "queued"},
+        ]
+        try:
+            with patch.object(main.static_analyzer, "engine_available", return_value=True), \
+                 patch.object(main.db, "count_active_analysis_jobs", return_value=0), \
+                 patch.object(main.db, "create_analysis_jobs", return_value=jobs) as reserve, \
+                 patch.object(
+                     main, "_spool_upload",
+                     new=AsyncMock(side_effect=[(paths[0], 5), (paths[1], 6)]),
+                 ), \
+                 patch.object(main, "_start_analysis_job") as start:
+                result = await main.create_batch_analysis_jobs(uploads)
+
+            self.assertEqual(2, result["count"])
+            reserve.assert_called_once_with(
+                ["first.apk", "second.apk"],
+                active_limit=main.analysis_service.queue_limit,
+            )
+            self.assertEqual(2, start.call_count)
+            start.assert_any_call("job-1", paths[0], "first.apk")
+            start.assert_any_call("job-2", paths[1], "second.apk")
+        finally:
+            for path in paths:
+                if os.path.exists(path):
+                    os.remove(path)
+
+    async def test_folder_batch_rejects_over_limit_before_spooling(self):
+        uploads = [
+            UploadFile(filename="first.apk", file=BytesIO(b"first")),
+            UploadFile(filename="second.apk", file=BytesIO(b"second")),
+        ]
+        with patch.object(main, "MAX_BATCH_APKS", 1), \
+             patch.object(main.static_analyzer, "engine_available", return_value=True), \
+             patch.object(main, "_spool_upload", new=AsyncMock()) as spool:
+            with self.assertRaises(HTTPException) as context:
+                await main.create_batch_analysis_jobs(uploads)
+
+        self.assertEqual(413, context.exception.status_code)
+        spool.assert_not_awaited()
 
 
 if __name__ == "__main__":

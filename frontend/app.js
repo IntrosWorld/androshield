@@ -7,6 +7,8 @@ const SEV_COLORS = {
 };
 
 let selectedFile = null;
+let selectedBatchFiles = [];
+const batchJobs = new Map();
 let gaugeChart = null;
 let currentId = null;
 let currentAnalysis = null;
@@ -26,7 +28,7 @@ const safeHttpUrl = (value) => {
 const statusChipTone = (status) => {
   const value = String(status || "").toLowerCase();
   if (["completed", "ok", "ready", "grounded"].includes(value)) return "chip-success";
-  if (["running", "pending", "investigating", "reviewing"].includes(value)) return "chip-info";
+  if (["queued", "running", "pending", "investigating", "reviewing"].includes(value)) return "chip-info";
   if (["approval_required", "unavailable", "warning"].includes(value)) return "chip-warning";
   return "chip-danger";
 };
@@ -397,7 +399,7 @@ $("dyn-ui-agent")?.addEventListener("change", event => {
 });
 
 // --- File selection ---
-const dropzone = $("dropzone"), fileInput = $("file-input");
+const dropzone = $("dropzone"), fileInput = $("file-input"), folderInput = $("folder-input");
 dropzone.addEventListener("click", () => fileInput.click());
 dropzone.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") {
@@ -409,9 +411,20 @@ dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.clas
 dropzone.addEventListener("dragleave", () => dropzone.classList.remove("is-dragging"));
 dropzone.addEventListener("drop", (e) => {
   e.preventDefault(); dropzone.classList.remove("is-dragging");
-  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+  const apks = Array.from(e.dataTransfer.files || []).filter(file => file.name.toLowerCase().endsWith(".apk"));
+  if (apks.length > 1) setBatchFiles(apks);
+  else if (apks.length === 1) setFile(apks[0]);
+  else showError("Please select a .apk file or a folder containing APKs.");
 });
 fileInput.addEventListener("change", () => { if (fileInput.files.length) setFile(fileInput.files[0]); });
+$('folder-select-btn').addEventListener("click", () => folderInput.click());
+folderInput.addEventListener("change", () => setBatchFiles(Array.from(folderInput.files || [])));
+
+function setAnalyzeIdleLabel(label) {
+  const button = $("analyze-btn");
+  button.textContent = label;
+  button.dataset.idleHtml = button.innerHTML;
+}
 
 function setFile(f) {
   if (!f.name.toLowerCase().endsWith(".apk")) {
@@ -423,7 +436,33 @@ function setFile(f) {
     return;
   }
   selectedFile = f;
+  selectedBatchFiles = [];
+  folderInput.value = "";
   $("file-name").textContent = `Selected: ${plain(f.name)}, ${(f.size / 1048576).toFixed(2)} MB`;
+  setAnalyzeIdleLabel("Analyze APK");
+  $("analyze-btn").disabled = false;
+  dropzone.classList.add("has-file");
+  hideError();
+}
+
+function setBatchFiles(files) {
+  const apks = files.filter(file => file.name.toLowerCase().endsWith(".apk"));
+  if (!apks.length) {
+    selectedBatchFiles = [];
+    $("file-name").textContent = "";
+    $("analyze-btn").disabled = true;
+    dropzone.classList.remove("has-file");
+    showError("The selected folder does not contain any APK files.");
+    return;
+  }
+  selectedFile = null;
+  selectedBatchFiles = apks;
+  fileInput.value = "";
+  const totalMb = apks.reduce((sum, file) => sum + file.size, 0) / 1048576;
+  const firstPath = apks[0].webkitRelativePath || apks[0].name;
+  const folder = firstPath.includes("/") ? firstPath.split("/")[0] : "selected folder";
+  $("file-name").textContent = `Selected: ${plain(folder)} - ${apks.length} APK(s), ${totalMb.toFixed(2)} MB`;
+  setAnalyzeIdleLabel(`Analyze ${apks.length} APK${apks.length === 1 ? "" : "s"}`);
   $("analyze-btn").disabled = false;
   dropzone.classList.add("has-file");
   hideError();
@@ -453,9 +492,107 @@ async function waitForAnalysisJob(jobId) {
   throw new Error("Analysis is still running. It will remain available in Recent Analyses when complete.");
 }
 
+function renderBatchProgress() {
+  const jobs = Array.from(batchJobs.values());
+  const completed = jobs.filter(job => job.status === "completed").length;
+  const failed = jobs.filter(job => job.status === "failed").length;
+  const active = jobs.length - completed - failed;
+  $("batch-card").classList.remove("hidden");
+  $("batch-summary").textContent = `${completed} completed - ${active} active${failed ? ` - ${failed} failed` : ""}`;
+  $("batch-list").innerHTML = jobs.map(job => {
+    const sample = job.sample;
+    const status = job.status || "queued";
+    const detail = status === "failed"
+      ? (job.error || job.message || "Analysis failed")
+      : (ANALYSIS_PHASE_LABELS[job.phase] || job.message || "Waiting for analysis capacity.");
+    const score = sample?.analysis?.risk_score;
+    const severity = sample?.analysis?.severity;
+    return `<div class="batch-row" data-batch-job="${esc(job.id)}">
+      <div class="min-w-0"><div class="batch-file">${esc(job.relativePath || job.filename)}</div><div class="batch-detail">${esc(detail)}</div></div>
+      <div class="batch-score">${score == null ? "" : `${Number(score)}/100 - ${esc(severity || "Unknown")}`}</div>
+      ${job.sample_id ? `<button type="button" class="btn-secondary batch-open" data-batch-open="${esc(job.id)}">View result</button>` : `<span class="chip ${statusChipTone(status)}">${esc(status)}</span>`}
+    </div>`;
+  }).join("");
+}
+
+async function loadBatchSample(job) {
+  if (!job.sample_id || job.sample) return;
+  const response = await fetch(`${API}/api/samples/${encodeURIComponent(job.sample_id)}`);
+  if (response.ok) job.sample = await response.json();
+}
+
+async function waitForBatchJobs() {
+  for (let attempt = 0; attempt < 2400; attempt += 1) {
+    const pending = Array.from(batchJobs.values()).filter(
+      job => job.status !== "completed" && job.status !== "failed",
+    );
+    if (!pending.length) {
+      await Promise.all(Array.from(batchJobs.values()).map(loadBatchSample));
+      renderBatchProgress();
+      return;
+    }
+    await Promise.all(pending.map(async existing => {
+      const response = await fetch(`${API}/api/analysis-jobs/${encodeURIComponent(existing.id)}`);
+      const update = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        Object.assign(existing, {status: "failed", error: update.detail || "Could not read job progress"});
+        return;
+      }
+      Object.assign(existing, update);
+      if (existing.status === "completed") await loadBatchSample(existing);
+    }));
+    renderBatchProgress();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  throw new Error("Batch analysis is still running. Completed samples remain available in Recent Analyses.");
+}
+
+async function analyzeBatch(files) {
+  batchJobs.clear();
+  $("results").classList.add("hidden");
+  $("batch-card").classList.remove("hidden");
+  $("batch-summary").textContent = "Uploading selected APKs...";
+  $("batch-list").innerHTML = "";
+  const form = new FormData();
+  files.forEach(file => form.append("files", file, file.name));
+  const response = await fetch(`${API}/api/analysis-jobs/batch`, {method: "POST", body: form});
+  const submitted = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(submitted.detail || "Could not start folder analysis");
+  submitted.jobs.forEach((job, index) => batchJobs.set(job.id, {
+    ...job,
+    clientFile: files[index],
+    relativePath: files[index]?.webkitRelativePath || files[index]?.name || job.filename,
+  }));
+  renderBatchProgress();
+  await waitForBatchJobs();
+  await loadHistory();
+}
+
+$("batch-list").addEventListener("click", event => {
+  const button = event.target.closest("[data-batch-open]");
+  if (!button) return;
+  const job = batchJobs.get(button.dataset.batchOpen);
+  if (!job?.sample_id) return;
+  if (job.clientFile) setFile(job.clientFile);
+  openSample(job.sample_id);
+});
+
 $("analyze-btn").addEventListener("click", async () => {
-  if (!selectedFile) return;
+  if (!selectedFile && !selectedBatchFiles.length) return;
   hideError();
+  if (selectedBatchFiles.length) {
+    const files = [...selectedBatchFiles];
+    setButtonBusy($("analyze-btn"), true, `Analyzing ${files.length} APKs...`);
+    try {
+      await analyzeBatch(files);
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setButtonBusy($("analyze-btn"), false);
+      $("analyze-btn").disabled = !selectedFile && !selectedBatchFiles.length;
+    }
+    return;
+  }
   $("results").classList.add("hidden");
   $("loading").classList.remove("hidden");
   setButtonBusy($("analyze-btn"), true, "Analyzing APK…");

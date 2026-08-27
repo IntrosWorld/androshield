@@ -192,6 +192,13 @@
     .history-row { border: 1px solid transparent; }
     .history-row { border-radius: 2px !important; }
     .history-row:hover { border-color: var(--line); background: var(--surface-muted); }
+    .batch-list { border: 1px solid var(--line); }
+    .batch-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: .8rem; align-items: center; padding: .78rem .9rem; background: var(--surface-muted); }
+    .batch-row + .batch-row { border-top: 1px solid var(--row-line); }
+    .batch-file { min-width: 0; color: var(--title); font-size: .76rem; font-weight: 550; overflow-wrap: anywhere; }
+    .batch-detail { margin-top: .15rem; color: var(--subtle); font-size: .67rem; }
+    .batch-score { min-width: 68px; color: var(--muted); font-size: .72rem; font-variant-numeric: tabular-nums; text-align: right; }
+    .batch-open { min-height: 32px; padding: .38rem .62rem; font-size: .7rem; }
     .agent-hypothesis { border: 1px solid var(--line); border-radius: 2px; background: var(--surface-muted); padding: .8rem; }
     .result-shell {
       overflow: hidden;
@@ -348,6 +355,9 @@
       .settings-actions button { flex: 1; }
       .component-row { grid-template-columns: 1fr; }
       .component-action { width: 100%; }
+      .batch-row { grid-template-columns: minmax(0,1fr) auto; }
+      .batch-score { grid-column: 1; grid-row: 2; min-width: 0; text-align: left; }
+      .batch-open { grid-column: 2; grid-row: 1 / span 2; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
@@ -402,7 +412,15 @@
         <p id="upload-help" class="text-sm text-slate-400 mt-1">Static analysis only. The APK is hashed and inspected, never executed on this host.</p>
         <p id="file-name" class="text-cyan-300 mt-3 text-sm font-medium min-h-[1.25rem]" aria-live="polite"></p>
       </div>
-      <div class="flex justify-center sm:justify-end mt-5">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mt-5">
+        <div>
+          <input type="file" id="folder-input" accept=".apk" multiple webkitdirectory directory class="hidden" />
+          <button id="folder-select-btn" type="button" class="btn-secondary btn-mobile-full">
+            <i class="ti ti-folder-open" aria-hidden="true"></i>
+            Select APK folder
+          </button>
+          <p class="text-xs text-slate-500 mt-1.5">Queues every APK in the selected folder for static analysis only.</p>
+        </div>
         <button id="analyze-btn" disabled
           class="btn-primary btn-mobile-full px-7">
           Analyze APK
@@ -420,6 +438,18 @@
     <section id="loading" class="hidden text-center py-12" role="status" aria-live="polite">
       <div class="inline-block w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
       <p class="text-slate-400 mt-4" id="loading-text">Decompiling &amp; analyzing APK…</p>
+    </section>
+
+    <!-- Folder batch progress -->
+    <section id="batch-card" class="glass rounded-2xl p-5 mb-8 hidden" aria-labelledby="batch-title">
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-4">
+        <div>
+          <p class="eyebrow mb-1">Folder analysis</p>
+          <h3 id="batch-title" class="text-base font-semibold text-white">Batch progress</h3>
+        </div>
+        <p id="batch-summary" class="text-xs text-slate-400" role="status" aria-live="polite"></p>
+      </div>
+      <div id="batch-list" class="batch-list"></div>
     </section>
 
     <!-- Error -->

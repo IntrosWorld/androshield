@@ -35,7 +35,9 @@ When evidence is sufficient, return ONLY JSON with this exact shape:
 {"type":"final","hypotheses":[{"claim":"...","confidence":"low|medium|high","evidence_ids":["id"]}],"gaps":["..."],"recommended_next_steps":["..."]}
 Every material claim must cite valid evidence IDs. Clearly distinguish observed facts
 from hypotheses. Do not claim maliciousness is confirmed without explicit independent
-confirmation evidence."""
+confirmation evidence. Keep the final response concise: at most 6 non-duplicative
+hypotheses, 4 evidence gaps, and 4 recommended next steps. Each claim or list item must
+be one sentence."""
 
 
 def _env_bool(name: str, default: bool = False) -> bool:

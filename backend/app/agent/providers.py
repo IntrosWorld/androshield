@@ -178,7 +178,7 @@ class OpenRouterProvider(AgentProvider):
         self.timeout = timeout or _env_int(
             "AGENT_PROVIDER_TIMEOUT_SECONDS", 240, 5, 900)
         self.max_output_tokens = max_output_tokens or _env_int(
-            "AGENT_MAX_OUTPUT_TOKENS", 1024, 64, 4096)
+            "AGENT_MAX_OUTPUT_TOKENS", 2048, 64, 4096)
         self.zdr = (_env_bool("OPENROUTER_ZDR", True) if zdr is None else zdr)
         # Some Qwen OpenRouter endpoints currently return finish_reason=tool_calls
         # while omitting message.tool_calls. Its strict JSON envelope is reliable and
@@ -233,6 +233,10 @@ class OpenRouterProvider(AgentProvider):
             "messages": self._messages(messages),
             "temperature": 0,
             "max_tokens": self.max_output_tokens,
+            # The agent protocol needs the completion budget for its validated
+            # JSON action envelope.  Some reasoning-capable routes otherwise
+            # consume that budget without returning message.content.
+            "reasoning": {"effort": "none"},
             "provider": {"zdr": self.zdr},
         }
         if tools and self.native_tools:
@@ -296,7 +300,15 @@ class OpenRouterProvider(AgentProvider):
         if isinstance(content, list):
             content = "".join(
                 str(item.get("text", "")) for item in content if isinstance(item, dict))
-        return _json_object(content)
+        try:
+            return _json_object(content)
+        except ProviderError as exc:
+            finish_reason = str((choices[0] or {}).get("finish_reason") or "unknown")
+            reasoning = message.get("reasoning") or ""
+            raise ProviderError(
+                f"{exc}; finish_reason={finish_reason}, "
+                f"content_chars={len(str(content))}, reasoning_chars={len(str(reasoning))}"
+            ) from exc
 
 
 class FallbackProvider(AgentProvider):

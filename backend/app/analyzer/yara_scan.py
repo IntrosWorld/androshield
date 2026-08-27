@@ -7,12 +7,15 @@ stage gracefully.
 """
 import logging
 import os
+import threading
 
 log = logging.getLogger("yara_scan")
 
 _RULES_PATH = os.path.join(os.path.dirname(__file__), "..", "rules", "android_fraud.yar")
 _compiled = None
 _load_attempted = False
+_load_lock = threading.Lock()
+_scan_lock = threading.Lock()
 
 
 def available() -> bool:
@@ -27,13 +30,18 @@ def _rules():
     global _compiled, _load_attempted
     if _load_attempted:
         return _compiled
-    _load_attempted = True
-    try:
-        import yara
-        _compiled = yara.compile(filepath=os.path.abspath(_RULES_PATH))
-    except Exception as e:
-        log.error("Failed to compile YARA rules: %s", e)
-        _compiled = None
+    with _load_lock:
+        if _load_attempted:
+            return _compiled
+        try:
+            import yara
+            _compiled = yara.compile(filepath=os.path.abspath(_RULES_PATH))
+        except Exception as e:
+            log.error("Failed to compile YARA rules: %s", e)
+            _compiled = None
+        finally:
+            # Publish completion only after the compiled object is fully assigned.
+            _load_attempted = True
     return _compiled
 
 
@@ -78,7 +86,11 @@ def scan(dex_strings, permissions=None, package_name=""):
     matches = []
     score = 0
     try:
-        for m in rules.match(data=blob):
+        # Some supported YARA bindings predate documented concurrent Rules use.
+        # Serialising only the native match call keeps batch results reproducible.
+        with _scan_lock:
+            raw_matches = list(rules.match(data=blob))
+        for m in raw_matches:
             meta = m.meta or {}
             rule_score = 0
             try:

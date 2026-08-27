@@ -299,6 +299,7 @@ class ProviderParsingTests(unittest.TestCase):
         payload = json.loads(sent_request.data)
         self.assertEqual("https://openrouter.ai/api/v1/chat/completions", sent_request.full_url)
         self.assertTrue(payload["provider"]["zdr"])
+        self.assertEqual({"effort": "none"}, payload["reasoning"])
         self.assertEqual("qwen/test", payload["model"])
         self.assertEqual("tool", decision["type"])
         self.assertEqual("inspect_manifest", decision["tool"])

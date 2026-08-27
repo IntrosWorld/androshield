@@ -14,6 +14,7 @@ Source: [`backend/app/main.py`](../backend/app/main.py)
 | `GET` | `/api/agent/health` | Agent config **plus** a live provider probe |
 | `POST` | `/api/analyze` | Static analysis of an uploaded APK |
 | `POST` | `/api/analysis-jobs` | Queue static analysis and return a persistent job ID |
+| `POST` | `/api/analysis-jobs/batch` | Atomically queue a browser-selected folder of APKs |
 | `GET` | `/api/analysis-jobs/{id}` | Read queued-analysis phase and result location |
 | `POST` | `/api/agent/investigate/{sample_id}` | Run the bounded agent on a stored sample |
 | `POST` | `/api/dynamic` | Emulator sandbox run (opt-in) |
@@ -145,6 +146,30 @@ than remaining stuck in `running`.
 `STATIC_ANALYSIS_QUEUE_LIMIT` bounds accepted queued/running jobs (default 20). The
 legacy `/api/analyze` endpoint remains available for API compatibility and uses the same
 threaded, capacity-controlled service.
+
+### Folder batch
+
+`POST /api/analysis-jobs/batch` accepts repeated multipart fields named `files`. Every
+item must end in `.apk`. The server validates the complete selection, streams each file
+through the normal per-file upload bound, then atomically reserves all queue slots. It
+returns `429` without accepting a partial batch if there is insufficient queue capacity.
+
+```json
+{
+  "count": 2,
+  "jobs": [
+    {"id": "...", "filename": "first.apk", "status": "queued",
+     "status_url": "/api/analysis-jobs/..."},
+    {"id": "...", "filename": "second.apk", "status": "queued",
+     "status_url": "/api/analysis-jobs/..."}
+  ]
+}
+```
+
+`MAX_BATCH_APKS` (default 20) bounds the number of files and
+`MAX_BATCH_TOTAL_MB` (default 1000) bounds their aggregate spooled size. Every job uses
+the same static worker, concurrency control, persistence, scoring, and report flow as a
+single upload. This endpoint never invokes dynamic analysis.
 
 ---
 

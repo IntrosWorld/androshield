@@ -37,6 +37,10 @@ from .agent import workflow as agent_workflow
 from . import analysis_service, db, optional_components, report as report_pdf, runtime_settings
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
+MAX_BATCH_APKS = max(1, min(int(os.getenv("MAX_BATCH_APKS", "20")), 100))
+MAX_BATCH_TOTAL_MB = max(
+    MAX_UPLOAD_MB, int(os.getenv("MAX_BATCH_TOTAL_MB", "1000")),
+)
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
 _dynamic_analysis_lock = asyncio.Lock()
@@ -181,6 +185,11 @@ def health():
         "analysis_queue": {
             "limit": analysis_service.queue_limit,
             "active_jobs": db.count_active_analysis_jobs(),
+        },
+        "batch_analysis": {
+            "max_apks": MAX_BATCH_APKS,
+            "max_total_mb": MAX_BATCH_TOTAL_MB,
+            "static_only": True,
         },
         "database": db.database_health(),
         "dynamic_capacity": {
@@ -327,6 +336,18 @@ async def _run_analysis_job(
         _remove_temporary_file(apk_path)
 
 
+def _start_analysis_job(job_id: str, apk_path: str, filename: str) -> None:
+    """Start and retain a background task until its worker finishes."""
+    task = asyncio.create_task(_run_analysis_job(job_id, apk_path, filename))
+    _analysis_job_tasks.add(task)
+    task.add_done_callback(_analysis_job_tasks.discard)
+
+
+def _safe_upload_filename(filename: str | None) -> str:
+    """Return a display-only basename, never a client-supplied relative path."""
+    return (filename or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
+
+
 @app.post("/api/analysis-jobs", status_code=202)
 async def create_analysis_job(file: UploadFile = File(...)):
     """Queue an APK analysis and return immediately with a persistent job ID."""
@@ -349,9 +370,7 @@ async def create_analysis_job(file: UploadFile = File(...)):
         )
         if not job:
             raise HTTPException(429, "Analysis queue is full; try again after a job completes")
-        task = asyncio.create_task(_run_analysis_job(job["id"], apk_path, filename))
-        _analysis_job_tasks.add(task)
-        task.add_done_callback(_analysis_job_tasks.discard)
+        _start_analysis_job(job["id"], apk_path, filename)
         handed_to_worker = True
         return {
             **job,
@@ -360,6 +379,84 @@ async def create_analysis_job(file: UploadFile = File(...)):
     except BaseException:
         if not handed_to_worker:
             _remove_temporary_file(apk_path)
+        raise
+
+
+@app.post("/api/analysis-jobs/batch", status_code=202)
+async def create_batch_analysis_jobs(files: list[UploadFile] = File(...)):
+    """Queue every APK selected from a browser folder as one atomic batch.
+
+    APKs are only spooled for the existing static pipeline. They are never opened from
+    an arbitrary server-side path and never enter the dynamic sandbox.
+    """
+    if not static_analyzer.engine_available():
+        raise HTTPException(503, "Static-analysis engine is not available")
+    if not files:
+        raise HTTPException(400, "Select a folder containing at least one .apk file")
+    if len(files) > MAX_BATCH_APKS:
+        raise HTTPException(
+            413, f"Folder contains too many APKs; maximum per batch is {MAX_BATCH_APKS}",
+        )
+
+    filenames = [_safe_upload_filename(file.filename) for file in files]
+    if any(not name.lower().endswith(".apk") for name in filenames):
+        raise HTTPException(400, "Every batch item must be a .apk file")
+
+    active_jobs = await run_in_threadpool(db.count_active_analysis_jobs)
+    if active_jobs + len(files) > analysis_service.queue_limit:
+        available = max(0, analysis_service.queue_limit - active_jobs)
+        raise HTTPException(
+            429,
+            f"Analysis queue has room for {available} more APK(s); "
+            f"this folder contains {len(files)}",
+        )
+
+    spooled: list[tuple[str, int]] = []
+    jobs: list[dict] = []
+    scheduled = 0
+    try:
+        total_bytes = 0
+        for file in files:
+            path, size = await _spool_upload(file)
+            spooled.append((path, size))
+            total_bytes += size
+            if total_bytes > MAX_BATCH_TOTAL_MB * 1024 * 1024:
+                raise HTTPException(
+                    413,
+                    f"Selected APKs exceed the {MAX_BATCH_TOTAL_MB} MB batch limit",
+                )
+
+        reserved = await run_in_threadpool(
+            db.create_analysis_jobs,
+            filenames,
+            active_limit=analysis_service.queue_limit,
+        )
+        if reserved is None:
+            raise HTTPException(429, "Analysis queue changed; retry the folder batch")
+        jobs = reserved
+
+        for job, (path, _size), filename in zip(jobs, spooled, filenames, strict=True):
+            _start_analysis_job(job["id"], path, filename)
+            scheduled += 1
+
+        return {
+            "count": len(jobs),
+            "jobs": [{
+                **job,
+                "status_url": f"/api/analysis-jobs/{job['id']}",
+            } for job in jobs],
+        }
+    except BaseException:
+        # Scheduled workers own their temporary files. Anything not handed off must be
+        # removed here, and any reserved-but-unscheduled row must not remain queued.
+        for path, _size in spooled[scheduled:]:
+            _remove_temporary_file(path)
+        for job in jobs[scheduled:]:
+            db.update_analysis_job(
+                job["id"], status="failed", phase="interrupted",
+                message="Batch submission was interrupted before the worker started.",
+                error="Batch submission interrupted",
+            )
         raise
 
 

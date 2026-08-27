@@ -8,11 +8,14 @@ malware. This complements the heuristic obfuscation module with named tooling.
 Optional: if apkid is not importable, `available()` is False and the analyzer skips it.
 """
 import logging
+import threading
 
 log = logging.getLogger("apkid")
 
 _scanner = None
 _load_attempted = False
+_load_lock = threading.Lock()
+_scan_lock = threading.Lock()
 
 # tag (APKiD rule category) -> (score, human label).
 # NOTE: 'obfuscator' is intentionally NOT scored — APKiD reports standard R8/ProGuard
@@ -53,16 +56,20 @@ def _get_scanner():
     global _scanner, _load_attempted
     if _load_attempted:
         return _scanner
-    _load_attempted = True
-    try:
-        from apkid.apkid import Scanner, Options
-        from apkid.rules import RulesManager
-        opts = Options(timeout=30, verbose=False, json=True, typing="magic")
-        rules = RulesManager().load()
-        _scanner = Scanner(rules, opts)
-    except Exception as e:
-        log.error("Failed to initialise APKiD: %s", e)
-        _scanner = None
+    with _load_lock:
+        if _load_attempted:
+            return _scanner
+        try:
+            from apkid.apkid import Scanner, Options
+            from apkid.rules import RulesManager
+            opts = Options(timeout=30, verbose=False, json=True, typing="magic")
+            rules = RulesManager().load()
+            _scanner = Scanner(rules, opts)
+        except Exception as e:
+            log.error("Failed to initialise APKiD: %s", e)
+            _scanner = None
+        finally:
+            _load_attempted = True
     return _scanner
 
 
@@ -75,7 +82,10 @@ def scan(apk_path: str) -> dict:
         return {"available": True, "findings": [], "score": 0, "error": "APKiD rules failed to load"}
 
     try:
-        raw = scanner.scan_file(apk_path)
+        # APKiD's Scanner owns native rule state; keep one shared scanner but do not
+        # enter it concurrently from bounded batch worker threads.
+        with _scan_lock:
+            raw = scanner.scan_file(apk_path)
     except Exception as e:
         log.exception("APKiD scan failed")
         return {"available": True, "findings": [], "score": 0, "error": str(e)}

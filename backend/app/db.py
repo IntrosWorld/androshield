@@ -258,20 +258,41 @@ def get_workflow_progress(sample_id: str) -> dict | None:
 
 
 def create_analysis_job(filename: str, *, active_limit: int | None = None) -> dict | None:
-    """Atomically reserve a queue slot across threads and API processes."""
-    job_id, now = uuid.uuid4().hex[:16], time.time()
+    """Atomically reserve one queue slot across threads and API processes."""
+    jobs = create_analysis_jobs([filename], active_limit=active_limit)
+    return jobs[0] if jobs else None
+
+
+def create_analysis_jobs(
+    filenames: list[str], *, active_limit: int | None = None,
+) -> list[dict] | None:
+    """Atomically reserve queue slots for a whole batch.
+
+    Returning ``None`` instead of partially accepting a batch keeps the UI and the
+    persisted queue consistent when another process reserves capacity concurrently.
+    """
+    if not filenames:
+        return []
+    now = time.time()
+    rows = [{
+        "id": uuid.uuid4().hex[:16],
+        "filename": filename,
+        "status": "queued",
+        "phase": "queued",
+        "message": "Waiting for analysis capacity.",
+        "created_at": now,
+        "updated_at": now,
+    } for filename in filenames]
     with _conn(immediate=True) as con:
         if con.dialect.name == "postgresql":
             con.exec_driver_sql("SELECT pg_advisory_xact_lock(hashtext('apk-analysis-queue'))")
         if active_limit is not None:
             active = con.execute(select(func.count()).select_from(analysis_jobs).where(
                 analysis_jobs.c.status.in_(("queued", "running")))).scalar_one()
-            if int(active) >= active_limit:
+            if int(active) + len(rows) > active_limit:
                 return None
-        con.execute(insert(analysis_jobs).values(
-            id=job_id, filename=filename, status="queued", phase="queued",
-            message="Waiting for analysis capacity.", created_at=now, updated_at=now))
-    return get_analysis_job(job_id)
+        con.execute(insert(analysis_jobs), rows)
+    return [get_analysis_job(row["id"]) for row in rows]
 
 
 def update_analysis_job(job_id: str, **values) -> bool:

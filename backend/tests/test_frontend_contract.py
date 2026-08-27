@@ -183,6 +183,19 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("ANALYSIS_PHASE_LABELS", JS)
         self.assertIn("completed.sample_id", JS)
 
+    def test_folder_batch_uses_directory_picker_and_persistent_jobs(self):
+        folder_input = tag_with_id(HTML, "folder-input")
+        self.assertIn("webkitdirectory", folder_input)
+        self.assertIn("multiple", folder_input)
+        tag_with_id(HTML, "folder-select-btn")
+        tag_with_id(HTML, "batch-card")
+        tag_with_id(HTML, "batch-summary")
+        tag_with_id(HTML, "batch-list")
+        self.assertIn('/api/analysis-jobs/batch', JS)
+        self.assertIn("async function waitForBatchJobs", JS)
+        self.assertIn("data-batch-open", JS)
+        self.assertIn("static analysis only", HTML.lower())
+
     def test_populated_results_use_the_analyst_workspace(self):
         for element_id in (
             "overview",
