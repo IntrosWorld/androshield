@@ -348,6 +348,29 @@ def _safe_upload_filename(filename: str | None) -> str:
     return (filename or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
 
 
+def _safe_batch_label(value: str | None, fallback: str) -> str:
+    """Normalize untrusted folder/path labels used only for display and exports."""
+    cleaned = "".join(" " if ord(char) < 32 else char for char in str(value or ""))
+    cleaned = cleaned.replace("\\", "/").strip().strip("/")
+    cleaned = " ".join(cleaned.split())[:240]
+    return cleaned or fallback
+
+
+def _batch_relative_paths(raw: str, filenames: list[str]) -> list[str]:
+    if not raw:
+        return filenames
+    try:
+        values = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(400, "Folder file paths must be a JSON list") from exc
+    if not isinstance(values, list) or len(values) != len(filenames):
+        raise HTTPException(400, "Folder file paths must match the uploaded APK count")
+    return [
+        _safe_batch_label(value, filename)
+        for value, filename in zip(values, filenames, strict=True)
+    ]
+
+
 @app.post("/api/analysis-jobs", status_code=202)
 async def create_analysis_job(file: UploadFile = File(...)):
     """Queue an APK analysis and return immediately with a persistent job ID."""
@@ -383,7 +406,11 @@ async def create_analysis_job(file: UploadFile = File(...)):
 
 
 @app.post("/api/analysis-jobs/batch", status_code=202)
-async def create_batch_analysis_jobs(files: list[UploadFile] = File(...)):
+async def create_batch_analysis_jobs(
+    files: list[UploadFile] = File(...),
+    folder_name: str = Form("Selected folder"),
+    relative_paths: str = Form(""),
+):
     """Queue every APK selected from a browser folder as one atomic batch.
 
     APKs are only spooled for the existing static pipeline. They are never opened from
@@ -401,6 +428,8 @@ async def create_batch_analysis_jobs(files: list[UploadFile] = File(...)):
     filenames = [_safe_upload_filename(file.filename) for file in files]
     if any(not name.lower().endswith(".apk") for name in filenames):
         raise HTTPException(400, "Every batch item must be a .apk file")
+    safe_folder_name = _safe_batch_label(folder_name, "Selected folder")
+    safe_relative_paths = _batch_relative_paths(relative_paths, filenames)
 
     active_jobs = await run_in_threadpool(db.count_active_analysis_jobs)
     if active_jobs + len(files) > analysis_service.queue_limit:
@@ -426,20 +455,24 @@ async def create_batch_analysis_jobs(files: list[UploadFile] = File(...)):
                     f"Selected APKs exceed the {MAX_BATCH_TOTAL_MB} MB batch limit",
                 )
 
-        reserved = await run_in_threadpool(
-            db.create_analysis_jobs,
+        batch = await run_in_threadpool(
+            db.create_analysis_batch,
+            safe_folder_name,
             filenames,
+            safe_relative_paths,
             active_limit=analysis_service.queue_limit,
         )
-        if reserved is None:
+        if batch is None:
             raise HTTPException(429, "Analysis queue changed; retry the folder batch")
-        jobs = reserved
+        jobs = batch["jobs"]
 
         for job, (path, _size), filename in zip(jobs, spooled, filenames, strict=True):
             _start_analysis_job(job["id"], path, filename)
             scheduled += 1
 
         return {
+            "batch_id": batch["id"],
+            "folder_name": batch["folder_name"],
             "count": len(jobs),
             "jobs": [{
                 **job,
@@ -468,6 +501,22 @@ def analysis_job(job_id: str):
     if job.get("sample_id"):
         job["result_url"] = f"/api/samples/{job['sample_id']}"
     return job
+
+
+@app.get("/api/analysis-batches")
+def analysis_batch_history(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    return {"batches": db.list_analysis_batches(limit=limit, offset=offset)}
+
+
+@app.get("/api/analysis-batches/{batch_id}")
+def analysis_batch(batch_id: str):
+    result = db.get_analysis_batch(batch_id)
+    if not result:
+        raise HTTPException(404, "Folder analysis not found")
+    return result
 
 
 @app.post("/api/agent/investigate/{sample_id}")
@@ -920,8 +969,11 @@ async def dynamic_analyze(
 def samples(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    exclude_batch: bool = Query(False),
 ):
-    return {"samples": db.list_samples(limit=limit, offset=offset)}
+    return {"samples": db.list_samples(
+        limit=limit, offset=offset, exclude_batch=exclude_batch,
+    )}
 
 
 @app.get("/api/samples/{sample_id}")

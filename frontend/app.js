@@ -8,6 +8,7 @@ const SEV_COLORS = {
 
 let selectedFile = null;
 let selectedBatchFiles = [];
+let selectedBatchFolder = "";
 const batchJobs = new Map();
 let gaugeChart = null;
 let currentId = null;
@@ -437,6 +438,7 @@ function setFile(f) {
   }
   selectedFile = f;
   selectedBatchFiles = [];
+  selectedBatchFolder = "";
   folderInput.value = "";
   $("file-name").textContent = `Selected: ${plain(f.name)}, ${(f.size / 1048576).toFixed(2)} MB`;
   setAnalyzeIdleLabel("Analyze APK");
@@ -449,6 +451,7 @@ function setBatchFiles(files) {
   const apks = files.filter(file => file.name.toLowerCase().endsWith(".apk"));
   if (!apks.length) {
     selectedBatchFiles = [];
+    selectedBatchFolder = "";
     $("file-name").textContent = "";
     $("analyze-btn").disabled = true;
     dropzone.classList.remove("has-file");
@@ -461,6 +464,7 @@ function setBatchFiles(files) {
   const totalMb = apks.reduce((sum, file) => sum + file.size, 0) / 1048576;
   const firstPath = apks[0].webkitRelativePath || apks[0].name;
   const folder = firstPath.includes("/") ? firstPath.split("/")[0] : "selected folder";
+  selectedBatchFolder = folder;
   $("file-name").textContent = `Selected: ${plain(folder)} - ${apks.length} APK(s), ${totalMb.toFixed(2)} MB`;
   setAnalyzeIdleLabel(`Analyze ${apks.length} APK${apks.length === 1 ? "" : "s"}`);
   $("analyze-btn").disabled = false;
@@ -597,7 +601,7 @@ async function waitForBatchJobs() {
     renderBatchProgress();
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
-  throw new Error("Batch analysis is still running. Completed samples remain available in Recent Analyses.");
+  throw new Error("Batch analysis is still running. Completed results remain available in Folder History.");
 }
 
 async function analyzeBatch(files) {
@@ -605,9 +609,14 @@ async function analyzeBatch(files) {
   $("results").classList.add("hidden");
   $("batch-card").classList.remove("hidden");
   $("batch-summary").textContent = "Uploading selected APKs...";
+  $("batch-title").textContent = selectedBatchFolder || "Batch progress";
   $("batch-list").innerHTML = "";
   const form = new FormData();
   files.forEach(file => form.append("files", file, file.name));
+  form.append("folder_name", selectedBatchFolder || "Selected folder");
+  form.append("relative_paths", JSON.stringify(files.map(
+    file => file.webkitRelativePath || file.name,
+  )));
   const response = await fetch(`${API}/api/analysis-jobs/batch`, {method: "POST", body: form});
   const submitted = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(submitted.detail || "Could not start folder analysis");
@@ -618,7 +627,7 @@ async function analyzeBatch(files) {
   }));
   renderBatchProgress();
   await waitForBatchJobs();
-  await loadHistory();
+  await Promise.all([loadHistory(), loadFolderHistory()]);
 }
 
 $("batch-list").addEventListener("click", event => {
@@ -1131,9 +1140,86 @@ $("workflow-settings-btn")?.addEventListener("click", () => $("settings-open")?.
 
 // --- Sample history ---
 const SEV_CHIP = (sev) => `<span class="chip ${severityChipTone(sev)}">${esc(sev)}</span>`;
+async function loadFolderHistory() {
+  try {
+    const response = await fetch(`${API}/api/analysis-batches`);
+    const {batches} = await response.json();
+    if (!response.ok || !batches?.length) {
+      $("folder-history-card").classList.add("hidden");
+      return;
+    }
+    $("folder-history-card").classList.remove("hidden");
+    $("folder-history-list").innerHTML = batches.slice(0, 12).map(batch => {
+      const analyzedAt = batch.created_at
+        ? new Date(batch.created_at * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"})
+        : "Date unavailable";
+      const progress = `${batch.completed}/${batch.total} completed`;
+      const flagged = `${batch.flagged} likely malicious`;
+      return `
+      <div class="history-row flex items-center justify-between gap-3 py-2 px-3 rounded-lg cursor-pointer" data-folder-batch-id="${esc(batch.id)}" role="button" tabindex="0">
+        <div class="min-w-0">
+          <div class="text-slate-200 text-sm truncate"><i class="ti ti-folder mr-1" aria-hidden="true"></i>${esc(batch.folder_name)}</div>
+          <div class="text-slate-500 text-xs mt-0.5"><span>${esc(progress)}</span><span class="mx-1">·</span><span>${esc(flagged)}</span><span class="mx-1">·</span><span>${esc(analyzedAt)}</span></div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-slate-400 text-sm">Max ${batch.max_score ?? "-"}</span>
+          ${batch.max_severity ? SEV_CHIP(batch.max_severity) : `<span class="chip ${statusChipTone(batch.status)}">${esc(batch.status)}</span>`}
+          <i class="ti ti-chevron-right text-slate-500" aria-hidden="true"></i>
+        </div>
+      </div>`;
+    }).join("");
+    $("folder-history-list").querySelectorAll("[data-folder-batch-id]").forEach(element => {
+      const open = () => openFolderBatch(element.dataset.folderBatchId);
+      element.addEventListener("click", open);
+      element.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      });
+    });
+  } catch (_) {
+    // History is supplementary; analysis remains usable if it cannot be loaded.
+  }
+}
+
+async function openFolderBatch(batchId) {
+  try {
+    const response = await fetch(`${API}/api/analysis-batches/${encodeURIComponent(batchId)}`);
+    const batch = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(batch.detail || "Could not load folder analysis");
+    batchJobs.clear();
+    batch.items.forEach(item => batchJobs.set(item.job_id, {
+      id: item.job_id,
+      filename: item.filename,
+      relativePath: item.relative_path,
+      status: item.status,
+      phase: item.phase,
+      message: item.message,
+      error: item.error,
+      sample_id: item.sample_id,
+      sample: item.sample_id ? {
+        package_name: item.package_name,
+        sha256: item.sha256,
+        analysis: {
+          risk_score: item.risk_score,
+          severity: item.severity,
+          manifest: {package_name: item.package_name},
+          file: {sha256: item.sha256},
+        },
+      } : null,
+    }));
+    $("batch-title").textContent = batch.folder_name || "Folder results";
+    renderBatchProgress();
+    $("batch-card").scrollIntoView({behavior: "smooth", block: "start"});
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
 async function loadHistory() {
   try {
-    const r = await fetch(`${API}/api/samples`);
+    const r = await fetch(`${API}/api/samples?exclude_batch=true`);
     const { samples } = await r.json();
     if (!samples || !samples.length) { $("history-card").classList.add("hidden"); return; }
     $("history-card").classList.remove("hidden");
@@ -1172,6 +1258,7 @@ async function openSample(id) {
   } catch (e) { showError("Could not load saved sample."); }
 }
 loadHistory();
+loadFolderHistory();
 
 function drawGauge(score, color) {
   const canvas = $("gauge");

@@ -428,9 +428,24 @@
       </div>
     </section>
 
+    <!-- Folder analysis history -->
+    <section id="folder-history-card" class="glass rounded-2xl p-5 mb-8 hidden" aria-labelledby="folder-history-title">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <p class="eyebrow mb-1">Batch archive</p>
+          <h3 id="folder-history-title" class="text-sm font-semibold text-slate-400 uppercase tracking-wide">Folder History</h3>
+        </div>
+        <span class="text-xs text-slate-500">One row per folder run</span>
+      </div>
+      <div id="folder-history-list" class="space-y-1.5"></div>
+    </section>
+
     <!-- Recent analyses -->
     <section id="history-card" class="glass rounded-2xl p-5 mb-8 hidden">
-      <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Recent Analyses</h3>
+      <div class="mb-3">
+        <p class="eyebrow mb-1">Single uploads</p>
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">Recent Analyses</h3>
+      </div>
       <div id="history-list" class="space-y-1.5"></div>
     </section>
 
@@ -737,6 +752,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=analyst-workspace-8"></script>
+  <script src="app.js?v=analyst-workspace-9"></script>
 </body>
 </html>

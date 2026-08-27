@@ -15,6 +15,8 @@ Source: [`backend/app/main.py`](../backend/app/main.py)
 | `POST` | `/api/analyze` | Static analysis of an uploaded APK |
 | `POST` | `/api/analysis-jobs` | Queue static analysis and return a persistent job ID |
 | `POST` | `/api/analysis-jobs/batch` | Atomically queue a browser-selected folder of APKs |
+| `GET` | `/api/analysis-batches` | List persisted folder-level history rows |
+| `GET` | `/api/analysis-batches/{id}` | Read one folder run and its per-APK results |
 | `GET` | `/api/analysis-jobs/{id}` | Read queued-analysis phase and result location |
 | `POST` | `/api/agent/investigate/{sample_id}` | Run the bounded agent on a stored sample |
 | `POST` | `/api/dynamic` | Emulator sandbox run (opt-in) |
@@ -149,13 +151,17 @@ threaded, capacity-controlled service.
 
 ### Folder batch
 
-`POST /api/analysis-jobs/batch` accepts repeated multipart fields named `files`. Every
-item must end in `.apk`. The server validates the complete selection, streams each file
-through the normal per-file upload bound, then atomically reserves all queue slots. It
-returns `429` without accepting a partial batch if there is insufficient queue capacity.
+`POST /api/analysis-jobs/batch` accepts repeated multipart fields named `files`, plus a
+display-only `folder_name` and a JSON `relative_paths` list. Every item must end in
+`.apk`. The server validates the complete selection, streams each file through the
+normal per-file upload bound, then atomically persists the folder and reserves all queue
+slots. It returns `429` without accepting a partial batch if there is insufficient queue
+capacity.
 
 ```json
 {
+  "batch_id": "48f7...",
+  "folder_name": "review-set",
   "count": 2,
   "jobs": [
     {"id": "...", "filename": "first.apk", "status": "queued",
@@ -170,6 +176,13 @@ returns `429` without accepting a partial batch if there is insufficient queue c
 `MAX_BATCH_TOTAL_MB` (default 1000) bounds their aggregate spooled size. Every job uses
 the same static worker, concurrency control, persistence, scoring, and report flow as a
 single upload. This endpoint never invokes dynamic analysis.
+
+`GET /api/analysis-batches` returns one durable summary per folder run, including total,
+completed, failed, active, likely-malicious count, and maximum score. Fetch
+`GET /api/analysis-batches/{id}` for the linked job and sample summaries. The dashboard
+uses these endpoints for the separate **Folder History** panel and CSV export. Batch
+samples remain accessible by sample ID; `GET /api/samples?exclude_batch=true` supports
+an uncluttered single-upload history.
 
 ---
 

@@ -115,6 +115,45 @@ class SqliteScalabilityTests(unittest.TestCase):
         self.assertEqual(2, db.count_active_analysis_jobs())
         self.assertIsNone(db.create_analysis_jobs(["third.apk"], active_limit=2))
 
+    def test_folder_batch_history_groups_jobs_and_filters_single_history(self):
+        batch = db.create_analysis_batch(
+            "mixed-folder",
+            ["benign.apk", "risk.apk"],
+            ["mixed-folder/benign.apk", "mixed-folder/risk.apk"],
+            active_limit=2,
+        )
+        benign_id = db.save_sample(_analysis(8), {})
+        risky = _analysis(75)
+        risky["severity"] = "Critical"
+        risky_id = db.save_sample(risky, {})
+        db.update_analysis_job(
+            batch["jobs"][0]["id"], status="completed", phase="completed",
+            message="Done", sample_id=benign_id,
+        )
+        db.update_analysis_job(
+            batch["jobs"][1]["id"], status="completed", phase="completed",
+            message="Done", sample_id=risky_id,
+        )
+
+        history = db.list_analysis_batches()
+        self.assertEqual(1, len(history))
+        self.assertEqual("mixed-folder", history[0]["folder_name"])
+        self.assertEqual(2, history[0]["completed"])
+        self.assertEqual(1, history[0]["flagged"])
+        self.assertEqual(75, history[0]["max_score"])
+        self.assertEqual("Critical", history[0]["max_severity"])
+        detail = db.get_analysis_batch(batch["id"])
+        self.assertEqual(2, len(detail["items"]))
+        self.assertEqual([], db.list_samples(exclude_batch=True))
+        self.assertEqual(2, len(db.list_samples()))
+
+    def test_rejected_folder_batch_does_not_leave_history(self):
+        self.assertIsNone(db.create_analysis_batch(
+            "too-large", ["one.apk", "two.apk"],
+            ["too-large/one.apk", "too-large/two.apk"], active_limit=1,
+        ))
+        self.assertEqual([], db.list_analysis_batches())
+
     def test_database_health_does_not_expose_connection_details(self):
         health = db.database_health()
         self.assertEqual("sqlite", health["backend"])
@@ -298,19 +337,28 @@ class AnalysisJobTests(unittest.IsolatedAsyncioTestCase):
         try:
             with patch.object(main.static_analyzer, "engine_available", return_value=True), \
                  patch.object(main.db, "count_active_analysis_jobs", return_value=0), \
-                 patch.object(main.db, "create_analysis_jobs", return_value=jobs) as reserve, \
+                 patch.object(main.db, "create_analysis_batch", return_value={
+                     "id": "batch-1", "folder_name": "folder", "jobs": jobs,
+                 }) as reserve, \
                  patch.object(
                      main, "_spool_upload",
                      new=AsyncMock(side_effect=[(paths[0], 5), (paths[1], 6)]),
                  ), \
                  patch.object(main, "_start_analysis_job") as start:
-                result = await main.create_batch_analysis_jobs(uploads)
+                result = await main.create_batch_analysis_jobs(
+                    uploads,
+                    folder_name="folder",
+                    relative_paths='["folder/first.apk", "folder/second.apk"]',
+                )
 
             self.assertEqual(2, result["count"])
             reserve.assert_called_once_with(
+                "folder",
                 ["first.apk", "second.apk"],
+                ["folder/first.apk", "folder/second.apk"],
                 active_limit=main.analysis_service.queue_limit,
             )
+            self.assertEqual("batch-1", result["batch_id"])
             self.assertEqual(2, start.call_count)
             start.assert_any_call("job-1", paths[0], "first.apk")
             start.assert_any_call("job-2", paths[1], "second.apk")
@@ -328,7 +376,9 @@ class AnalysisJobTests(unittest.IsolatedAsyncioTestCase):
              patch.object(main.static_analyzer, "engine_available", return_value=True), \
              patch.object(main, "_spool_upload", new=AsyncMock()) as spool:
             with self.assertRaises(HTTPException) as context:
-                await main.create_batch_analysis_jobs(uploads)
+                await main.create_batch_analysis_jobs(
+                    uploads, folder_name="folder", relative_paths="[]",
+                )
 
         self.assertEqual(413, context.exception.status_code)
         spool.assert_not_awaited()

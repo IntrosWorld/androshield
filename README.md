@@ -49,8 +49,9 @@ The APK was submitted only to `/api/analyze`; it was never installed or executed
 Key UI capabilities:
 
 - Drag-and-drop APK selection with clear static-analysis safety messaging.
-- Folder batch selection with persistent per-APK progress and results, plus CSV export;
-  batch mode uses the same bounded static pipeline and never runs APKs in the emulator.
+- Folder batch selection with one persistent Folder History row per run, per-APK
+  drill-down, and CSV export; batch mode uses the same bounded static pipeline and never
+  runs APKs in the emulator.
 - Explainable risk gauge, severity thresholds, score contributions, permissions, APIs, IOCs, signatures, and ATT&CK mapping.
 - Bounded local/Gemini investigation with an auditable action trail.
 - PDF and IOC exports, persisted sample history, and explicit emulator-only dynamic analysis.
@@ -97,8 +98,9 @@ http://localhost:8000/api/health shows `"analyzer_ready": true` first.
 
 To inspect a collection, select **Select APK folder**. The browser submits only `.apk`
 files from that folder, and the dashboard shows independent queued/running/completed
-states with a **View result** action for each sample. A folder batch is static-only;
-dynamic analysis remains an explicit one-APK action.
+states with a **View result** action for each sample. Completed runs appear as one row in
+**Folder History**, separate from individual uploads in **Recent Analyses**. A folder
+batch is static-only; dynamic analysis remains an explicit one-APK action.
 
 ### No APK to test with?
 

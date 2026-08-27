@@ -12,8 +12,9 @@ import time
 import uuid
 from contextlib import contextmanager
 
-from sqlalchemy import (Column, Float, Index, Integer, MetaData, String, Table, Text,
-                        create_engine, delete, event, func, insert, select, update)
+from sqlalchemy import (Column, Float, ForeignKey, Index, Integer, MetaData, String,
+                        Table, Text, case, create_engine, delete, event, func, insert,
+                        select, update)
 from sqlalchemy.engine import Engine, URL, make_url
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -53,9 +54,25 @@ analysis_jobs = Table(
     Column("message", Text, nullable=False), Column("sample_id", String), Column("error", Text),
     Column("created_at", Float, nullable=False), Column("updated_at", Float, nullable=False),
 )
+analysis_batches = Table(
+    "analysis_batches", metadata,
+    Column("id", String, primary_key=True),
+    Column("folder_name", Text, nullable=False),
+    Column("created_at", Float, nullable=False),
+)
+analysis_batch_items = Table(
+    "analysis_batch_items", metadata,
+    Column("batch_id", String, ForeignKey("analysis_batches.id", ondelete="CASCADE"),
+           primary_key=True),
+    Column("job_id", String, ForeignKey("analysis_jobs.id", ondelete="CASCADE"),
+           primary_key=True),
+    Column("relative_path", Text, nullable=False),
+)
 Index("idx_apk_samples_upload_time", apk_samples.c.upload_time.desc())
 Index("idx_apk_samples_sha256", apk_samples.c.sha256)
 Index("idx_analysis_jobs_updated", analysis_jobs.c.updated_at.desc())
+Index("idx_analysis_batches_created", analysis_batches.c.created_at.desc())
+Index("idx_analysis_batch_items_job", analysis_batch_items.c.job_id, unique=True)
 
 _engine_lock = threading.Lock()
 _engines: dict[str, Engine] = {}
@@ -158,8 +175,12 @@ def init_db():
                  error="Analysis interrupted by server restart", updated_at=now))
         con.execute(delete(workflow_progress).where(
             workflow_progress.c.updated_at < now - WORKFLOW_PROGRESS_TTL_SECONDS))
+        # Batch-linked jobs are durable history records. Standalone queue rows remain
+        # bounded by the normal TTL.
+        batched_job_ids = select(analysis_batch_items.c.job_id)
         con.execute(delete(analysis_jobs).where(
-            analysis_jobs.c.updated_at < now - ANALYSIS_JOB_TTL_SECONDS))
+            analysis_jobs.c.updated_at < now - ANALYSIS_JOB_TTL_SECONDS,
+            ~analysis_jobs.c.id.in_(batched_job_ids)))
 
 
 def database_health() -> dict:
@@ -233,13 +254,22 @@ def get_sample(sample_id: str):
     return result
 
 
-def list_samples(limit: int = 50, offset: int = 0):
+def list_samples(limit: int = 50, offset: int = 0, *, exclude_batch: bool = False):
     limit, offset = max(1, min(int(limit), 100)), max(0, int(offset))
     columns = (apk_samples.c.id, apk_samples.c.filename, apk_samples.c.sha256,
                apk_samples.c.package_name, apk_samples.c.risk_score,
                apk_samples.c.severity, apk_samples.c.upload_time)
+    statement = select(*columns)
+    if exclude_batch:
+        batch_sample_ids = select(analysis_jobs.c.sample_id).select_from(
+            analysis_jobs.join(
+                analysis_batch_items,
+                analysis_batch_items.c.job_id == analysis_jobs.c.id,
+            )
+        ).where(analysis_jobs.c.sample_id.is_not(None))
+        statement = statement.where(~apk_samples.c.id.in_(batch_sample_ids))
     with _conn() as con:
-        rows = con.execute(select(*columns).order_by(apk_samples.c.upload_time.desc())
+        rows = con.execute(statement.order_by(apk_samples.c.upload_time.desc())
                            .limit(limit).offset(offset)).mappings().all()
     return [dict(row) for row in rows]
 
@@ -293,6 +323,130 @@ def create_analysis_jobs(
                 return None
         con.execute(insert(analysis_jobs), rows)
     return [get_analysis_job(row["id"]) for row in rows]
+
+
+def create_analysis_batch(
+    folder_name: str,
+    filenames: list[str],
+    relative_paths: list[str],
+    *,
+    active_limit: int | None = None,
+) -> dict | None:
+    """Atomically persist a folder identity and reserve all of its queue jobs."""
+    if not filenames or len(filenames) != len(relative_paths):
+        raise ValueError("batch filenames and relative paths must have equal non-zero length")
+    now = time.time()
+    batch_id = uuid.uuid4().hex[:16]
+    rows = [{
+        "id": uuid.uuid4().hex[:16],
+        "filename": filename,
+        "status": "queued",
+        "phase": "queued",
+        "message": "Waiting for analysis capacity.",
+        "created_at": now,
+        "updated_at": now,
+    } for filename in filenames]
+    with _conn(immediate=True) as con:
+        if con.dialect.name == "postgresql":
+            con.exec_driver_sql("SELECT pg_advisory_xact_lock(hashtext('apk-analysis-queue'))")
+        if active_limit is not None:
+            active = con.execute(select(func.count()).select_from(analysis_jobs).where(
+                analysis_jobs.c.status.in_(("queued", "running")))).scalar_one()
+            if int(active) + len(rows) > active_limit:
+                return None
+        con.execute(insert(analysis_batches).values(
+            id=batch_id, folder_name=folder_name, created_at=now))
+        con.execute(insert(analysis_jobs), rows)
+        con.execute(insert(analysis_batch_items), [{
+            "batch_id": batch_id,
+            "job_id": row["id"],
+            "relative_path": relative_path,
+        } for row, relative_path in zip(rows, relative_paths, strict=True)])
+    return {
+        "id": batch_id,
+        "folder_name": folder_name,
+        "created_at": now,
+        "jobs": [get_analysis_job(row["id"]) for row in rows],
+    }
+
+
+def _severity_for_score(score: int | None) -> str | None:
+    if score is None:
+        return None
+    if score >= 71:
+        return "Critical"
+    if score >= 41:
+        return "High"
+    if score >= 21:
+        return "Medium"
+    return "Low"
+
+
+def list_analysis_batches(limit: int = 50, offset: int = 0) -> list[dict]:
+    limit, offset = max(1, min(int(limit), 100)), max(0, int(offset))
+    joined = analysis_batches.join(
+        analysis_batch_items,
+        analysis_batch_items.c.batch_id == analysis_batches.c.id,
+    ).join(analysis_jobs, analysis_jobs.c.id == analysis_batch_items.c.job_id).outerjoin(
+        apk_samples, apk_samples.c.id == analysis_jobs.c.sample_id,
+    )
+    statement = select(
+        analysis_batches.c.id,
+        analysis_batches.c.folder_name,
+        analysis_batches.c.created_at,
+        func.count(analysis_jobs.c.id).label("total"),
+        func.sum(case((analysis_jobs.c.status == "completed", 1), else_=0)).label("completed"),
+        func.sum(case((analysis_jobs.c.status == "failed", 1), else_=0)).label("failed"),
+        func.sum(case((apk_samples.c.risk_score >= 41, 1), else_=0)).label("flagged"),
+        func.max(apk_samples.c.risk_score).label("max_score"),
+    ).select_from(joined).group_by(
+        analysis_batches.c.id,
+        analysis_batches.c.folder_name,
+        analysis_batches.c.created_at,
+    ).order_by(analysis_batches.c.created_at.desc()).limit(limit).offset(offset)
+    with _conn() as con:
+        rows = con.execute(statement).mappings().all()
+    result = []
+    for source in rows:
+        item = dict(source)
+        for key in ("total", "completed", "failed", "flagged"):
+            item[key] = int(item.get(key) or 0)
+        item["active"] = item["total"] - item["completed"] - item["failed"]
+        item["status"] = (
+            "running" if item["active"] else
+            "completed_with_errors" if item["failed"] else "completed"
+        )
+        item["max_severity"] = _severity_for_score(item.get("max_score"))
+        result.append(item)
+    return result
+
+
+def get_analysis_batch(batch_id: str) -> dict | None:
+    with _conn() as con:
+        batch = con.execute(select(analysis_batches).where(
+            analysis_batches.c.id == batch_id)).mappings().first()
+        if not batch:
+            return None
+        rows = con.execute(select(
+            analysis_batch_items.c.relative_path,
+            analysis_jobs.c.id.label("job_id"),
+            analysis_jobs.c.filename,
+            analysis_jobs.c.status,
+            analysis_jobs.c.phase,
+            analysis_jobs.c.message,
+            analysis_jobs.c.error,
+            analysis_jobs.c.sample_id,
+            apk_samples.c.package_name,
+            apk_samples.c.sha256,
+            apk_samples.c.risk_score,
+            apk_samples.c.severity,
+        ).select_from(analysis_batch_items.join(
+            analysis_jobs, analysis_jobs.c.id == analysis_batch_items.c.job_id,
+        ).outerjoin(
+            apk_samples, apk_samples.c.id == analysis_jobs.c.sample_id,
+        )).where(analysis_batch_items.c.batch_id == batch_id).order_by(
+            analysis_batch_items.c.relative_path.asc())).mappings().all()
+    return {**dict(batch), "items": [dict(row) for row in rows]}
 
 
 def update_analysis_job(job_id: str, **values) -> bool:
