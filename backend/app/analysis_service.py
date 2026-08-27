@@ -52,8 +52,13 @@ class AnalysisCapacity:
     def slot(self, progress: ProgressCallback) -> Iterator[None]:
         with self._state_lock:
             self._waiting += 1
-        progress("queued", "Waiting for static-analysis capacity.")
-        self._semaphore.acquire()
+        try:
+            progress("queued", "Waiting for static-analysis capacity.")
+            self._semaphore.acquire()
+        except BaseException:
+            with self._state_lock:
+                self._waiting -= 1
+            raise
         with self._state_lock:
             self._waiting -= 1
             self._active += 1

@@ -293,6 +293,33 @@ def create_analysis_job(filename: str, *, active_limit: int | None = None) -> di
     return jobs[0] if jobs else None
 
 
+def _new_analysis_job_rows(filenames: list[str], now: float) -> list[dict]:
+    return [{
+        "id": uuid.uuid4().hex[:16],
+        "filename": filename,
+        "status": "queued",
+        "phase": "queued",
+        "message": "Waiting for analysis capacity.",
+        "sample_id": None,
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+    } for filename in filenames]
+
+
+def _reserve_analysis_job_rows(con, rows: list[dict], active_limit: int | None) -> bool:
+    """Reserve queue capacity and insert rows inside the caller's transaction."""
+    if con.dialect.name == "postgresql":
+        con.exec_driver_sql("SELECT pg_advisory_xact_lock(hashtext('apk-analysis-queue'))")
+    if active_limit is not None:
+        active = con.execute(select(func.count()).select_from(analysis_jobs).where(
+            analysis_jobs.c.status.in_(("queued", "running")))).scalar_one()
+        if int(active) + len(rows) > active_limit:
+            return False
+    con.execute(insert(analysis_jobs), rows)
+    return True
+
+
 def create_analysis_jobs(
     filenames: list[str], *, active_limit: int | None = None,
 ) -> list[dict] | None:
@@ -303,26 +330,11 @@ def create_analysis_jobs(
     """
     if not filenames:
         return []
-    now = time.time()
-    rows = [{
-        "id": uuid.uuid4().hex[:16],
-        "filename": filename,
-        "status": "queued",
-        "phase": "queued",
-        "message": "Waiting for analysis capacity.",
-        "created_at": now,
-        "updated_at": now,
-    } for filename in filenames]
+    rows = _new_analysis_job_rows(filenames, time.time())
     with _conn(immediate=True) as con:
-        if con.dialect.name == "postgresql":
-            con.exec_driver_sql("SELECT pg_advisory_xact_lock(hashtext('apk-analysis-queue'))")
-        if active_limit is not None:
-            active = con.execute(select(func.count()).select_from(analysis_jobs).where(
-                analysis_jobs.c.status.in_(("queued", "running")))).scalar_one()
-            if int(active) + len(rows) > active_limit:
-                return None
-        con.execute(insert(analysis_jobs), rows)
-    return [get_analysis_job(row["id"]) for row in rows]
+        if not _reserve_analysis_job_rows(con, rows, active_limit):
+            return None
+    return [dict(row) for row in rows]
 
 
 def create_analysis_batch(
@@ -337,26 +349,12 @@ def create_analysis_batch(
         raise ValueError("batch filenames and relative paths must have equal non-zero length")
     now = time.time()
     batch_id = uuid.uuid4().hex[:16]
-    rows = [{
-        "id": uuid.uuid4().hex[:16],
-        "filename": filename,
-        "status": "queued",
-        "phase": "queued",
-        "message": "Waiting for analysis capacity.",
-        "created_at": now,
-        "updated_at": now,
-    } for filename in filenames]
+    rows = _new_analysis_job_rows(filenames, now)
     with _conn(immediate=True) as con:
-        if con.dialect.name == "postgresql":
-            con.exec_driver_sql("SELECT pg_advisory_xact_lock(hashtext('apk-analysis-queue'))")
-        if active_limit is not None:
-            active = con.execute(select(func.count()).select_from(analysis_jobs).where(
-                analysis_jobs.c.status.in_(("queued", "running")))).scalar_one()
-            if int(active) + len(rows) > active_limit:
-                return None
+        if not _reserve_analysis_job_rows(con, rows, active_limit):
+            return None
         con.execute(insert(analysis_batches).values(
             id=batch_id, folder_name=folder_name, created_at=now))
-        con.execute(insert(analysis_jobs), rows)
         con.execute(insert(analysis_batch_items), [{
             "batch_id": batch_id,
             "job_id": row["id"],
@@ -366,7 +364,7 @@ def create_analysis_batch(
         "id": batch_id,
         "folder_name": folder_name,
         "created_at": now,
-        "jobs": [get_analysis_job(row["id"]) for row in rows],
+        "jobs": [dict(row) for row in rows],
     }
 
 

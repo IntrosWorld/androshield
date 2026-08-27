@@ -282,6 +282,8 @@ CICMalDroid Banking and 500 CICMalDroid Benign APKs. Live inference uses the sam
 permissions, APIs, manifest/component counts, certificate flags, obfuscation, YARA,
 APKiD, and IOC-shape fields used during extraction. `APK_STATIC_MODEL_PATH` can point to
 another compatible artifact; the older permission-only `model.pkl` remains a fallback.
+Because joblib uses Python deserialization, never load an artifact from an untrusted
+source.
 
 The model is a supporting local signal and cannot clear an APK. A probability below its
 validated threshold is `not_flagged`, never proof of benignness. To rebuild the older

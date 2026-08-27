@@ -199,6 +199,20 @@ class CapacityTests(unittest.TestCase):
         self.assertEqual(1, maximum_active)
         self.assertEqual({"limit": 1, "active": 0, "waiting": 0}, capacity.snapshot())
 
+    def test_progress_failure_does_not_leak_waiting_capacity(self):
+        capacity = AnalysisCapacity(1)
+
+        def failed_progress(_phase, _message):
+            raise RuntimeError("progress unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "progress unavailable"):
+            with capacity.slot(failed_progress):
+                self.fail("slot must not be entered when progress reporting fails")
+
+        self.assertEqual({"limit": 1, "active": 0, "waiting": 0}, capacity.snapshot())
+        with capacity.slot(lambda _phase, _message: None):
+            self.assertEqual(1, capacity.snapshot()["active"])
+
 
 class ConcurrentLazyLoadTests(unittest.TestCase):
     @staticmethod
