@@ -170,6 +170,8 @@ def _observation(result: dict, action: dict) -> dict:
         "ran": bool(result.get("ran")),
         "duration": result.get("duration"),
         "dynamic_score": result.get("dynamic_score", 0),
+        "final_score": result.get("final_score"),
+        "final_severity": result.get("final_severity"),
         "runtime_signals": list(result.get("runtime_signals") or [])[:30],
         "network": {
             "urls": list(network.get("urls") or [])[:30],

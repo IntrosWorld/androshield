@@ -373,11 +373,18 @@ Full controls: [07 §13](07-agentic-investigation.md#13-optional-agentic-investi
 | `duration` | int | 15 | Observation seconds, clamped 5–120 |
 | `use_frida` | bool | false | Frida hooking tier |
 | `serial` | str | none | Explicit device; must be currently connected |
+| `sample_id` | str | none | Saved static case used for hash-verified final scoring |
 
 Without `serial`, the runner targets **only** the AVD named by `SANDBOX_AVD` (default
 `FraudSandbox`) — never an arbitrary attached device.
 
-**Errors:** `400` (bad extension, unconnected serial, unreadable package),
+When `sample_id` is present, the re-uploaded APK must match the saved SHA-256. A completed
+run then returns and persists `final_score`, `final_severity`, and
+`final_score_breakdown`; the original static `risk_score` and runtime `dynamic_score`
+remain unchanged. The formula is `min(static_score + dynamic_score, 100)`.
+
+**Errors:** `400` (bad extension, hash mismatch, unconnected serial, unreadable package),
+`404` (sample not found), `409` (static analysis incomplete),
 `503` (no emulator available — with the reason), `500` (unexpected failure).
 
 Response shape: [09 §9](09-dynamic-analysis.md#9-result-shape).
@@ -422,10 +429,11 @@ Same rows as `type,value`, with `"` doubled per RFC 4180. Downloads as
 
 ### `GET /api/samples/{id}/report.pdf`
 
-ReportLab-rendered PDF containing: metadata and score header, executive and technical
+ReportLab-rendered PDF containing: metadata and static-score header, executive and technical
 summaries, detected behaviours, attack chain, **full score breakdown**, technical
 evidence, IOCs, YARA matches, MITRE mapping, certificate and attack surface, APKiD, ML
-verdict, VirusTotal, the agentic investigation, and recommendations. Downloads as
+verdict, VirusTotal, the agentic investigation, recommendations, and—when available—the
+final score after a completed hash-linked dynamic run. Downloads as
 `<package_name>_report.pdf`.
 
 ---

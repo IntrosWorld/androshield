@@ -1,10 +1,30 @@
 import unittest
 from unittest.mock import patch
 
-from app.dynamic import adb, frida_runner, sandbox
+from app.dynamic import adb, final_scoring, frida_runner, sandbox
 
 
 class DynamicParserTests(unittest.TestCase):
+    def test_final_score_is_additive_capped_and_preserves_components(self):
+        combined = final_scoring.combine(72, 41)
+
+        self.assertEqual(72, combined["static_score"])
+        self.assertEqual(41, combined["dynamic_score"])
+        self.assertEqual(100, combined["final_score"])
+        self.assertEqual("Critical", combined["final_severity"])
+        self.assertEqual(13, combined["dynamic_points_capped"])
+        self.assertEqual(
+            100, sum(item["points"] for item in combined["final_score_breakdown"]),
+        )
+
+    def test_zero_dynamic_evidence_never_reduces_static_score(self):
+        combined = final_scoring.combine(48, 0)
+
+        self.assertEqual(48, combined["final_score"])
+        self.assertEqual("High", combined["final_severity"])
+        self.assertEqual(48, combined["static_score"])
+        self.assertEqual(0, combined["dynamic_score"])
+
     def test_granted_permissions_parser_is_deduplicated(self):
         text = """
           android.permission.READ_SMS: granted=true

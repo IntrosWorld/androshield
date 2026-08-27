@@ -855,9 +855,9 @@ function renderWorkflow(workflow) {
   const observations = (workflow.observations || []).map(observation => {
     const network = observation.network || {}, frida = observation.frida || {}, ui = observation.ui_agent || {};
     const endpointCount = (network.urls || []).length + (network.domains || []).length + (network.ips || []).length;
-    return `<div class="finding-row"><div class="finding-score text-cyan-300">${esc(observation.dynamic_score ?? 0)}</div><div>
+    return `<div class="finding-row"><div class="finding-score text-cyan-300">${esc(observation.final_score ?? observation.dynamic_score ?? 0)}</div><div>
       <div class="finding-name">${esc(observation.action_kind || "sandbox observation")}</div>
-      <div class="finding-detail">${esc((observation.runtime_signals || []).length)} runtime signal(s), ${esc(endpointCount)} network indicator(s), ${esc(frida.event_count || 0)} Frida event(s), ${esc(ui.steps_used || 0)} UI step(s).</div>
+      <div class="finding-detail">${observation.final_score != null ? `Final ${esc(observation.final_score)} (${esc(observation.final_severity || "Unknown")}) · dynamic ${esc(observation.dynamic_score ?? 0)}. ` : ""}${esc((observation.runtime_signals || []).length)} runtime signal(s), ${esc(endpointCount)} network indicator(s), ${esc(frida.event_count || 0)} Frida event(s), ${esc(ui.steps_used || 0)} UI step(s).</div>
     </div></div>`;
   }).join("");
   const audit = (workflow.audit || []).map(entry => `<div class="flex justify-between gap-3 border-b border-slate-800 py-1.5"><span>${esc(entry.detail || entry.event)}</span><span class="chip ${statusChipTone(entry.status)}">${esc(entry.status)}</span></div>`).join("");
@@ -1028,11 +1028,18 @@ async function runDynamic() {
   fd.append("use_frida", frida ? "true" : "false");
   fd.append("use_ui_agent", uiAgent ? "true" : "false");
   fd.append("ui_agent_mode", uiAgentMode);
+  if (currentId) fd.append("sample_id", currentId);
   if (serial) fd.append("serial", serial);
   try {
     const res = await fetch(`${API}/api/dynamic`, { method: "POST", body: fd });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Dynamic analysis failed");
+    if (currentAnalysis && data.final_score != null) {
+      currentAnalysis.final_score = data.final_score;
+      currentAnalysis.final_severity = data.final_severity;
+      currentAnalysis.final_score_breakdown = data.final_score_breakdown || [];
+      currentAnalysis.latest_dynamic = data;
+    }
     renderDynamic(data);
   } catch (e) {
     $("dyn-results").classList.remove("hidden");
@@ -1058,6 +1065,8 @@ function renderDynamic(d) {
     ? `<div><span class="text-slate-400">${label}:</span> <span class="text-slate-300 font-mono text-xs break-all">${arr.slice(0,15).map(esc).join(", ")}</span></div>` : "";
   const fr = d.frida || {};
   const ua = d.ui_agent || {};
+  const finalScore = d.final_score;
+  const finalSeverity = d.final_severity || "Unknown";
   $("dyn-results").innerHTML =
     `<div class="flex items-center gap-3 mb-3"><span class="text-2xl font-medium font-mono text-amber-400">${d.dynamic_score ?? 0}</span><span class="text-slate-400 text-sm">dynamic behaviour score, ran ${d.duration}s${d.use_frida ? ", Frida" : ""}${d.rooted ? ", root" : ""}${d.has_launcher === false ? ", no launcher icon" : ""}</span></div>`
     + ((d.activated && d.activated.length) ? `<div class="text-xs text-slate-400 mb-2">Triggered: ${d.activated.map(x=>`<span class="chip chip-warning">${esc(x)}</span>`).join(" ")}</div>` : "")
@@ -1077,7 +1086,15 @@ function renderDynamic(d) {
     + (d.score_breakdown && d.score_breakdown.length
         ? `<div class="mt-3 space-y-1">` + d.score_breakdown.map(b=>`<div class="text-xs flex justify-between"><span class="text-slate-400">${esc(b.category)}</span><span class="text-amber-400">+${Number(b.points)||0}</span></div>`).join("") + `</div>` : "")
     + (!d.granted_permissions?.length && !net.urls?.length && !d.services?.length && !fr.ran
-        ? `<p class="text-slate-500 text-xs mt-2">No notable runtime behaviour observed in ${d.duration}s (app may need interaction, or is benign).</p>` : "");
+        ? `<p class="text-slate-500 text-xs mt-2">No notable runtime behaviour observed in ${d.duration}s (app may need interaction, or is benign).</p>` : "")
+    + (finalScore != null
+        ? `<div class="mt-5 rounded-lg border border-cyan-700/50 bg-cyan-950/20 p-4">`
+          + `<div class="text-[10px] uppercase tracking-wider text-slate-500">Final score after dynamic analysis</div>`
+          + `<div class="mt-2 flex flex-wrap items-center gap-3"><span class="text-3xl font-semibold font-mono text-cyan-300">${Number(finalScore)}</span><span class="chip ${severityChipTone(finalSeverity)}">${esc(finalSeverity)}</span><span class="text-xs text-slate-400">Static ${Number(d.static_score)||0} + runtime contribution ${Math.max(0, Number(finalScore) - (Number(d.static_score)||0))}</span></div>`
+          + `<div class="mt-3 space-y-1">${(d.final_score_breakdown||[]).map(b=>`<div class="text-xs flex justify-between gap-4"><span class="text-slate-400">${esc(b.category)}<span class="block text-slate-600">${esc(b.detail||"")}</span></span><span class="text-cyan-300">+${Number(b.points)||0}</span></div>`).join("")}</div>`
+          + (Number(d.dynamic_points_capped) > 0 ? `<p class="mt-2 text-xs text-slate-500">${Number(d.dynamic_points_capped)} dynamic point(s) exceeded the 100-point cap.</p>` : "")
+          + `</div>`
+        : `<p class="mt-4 text-xs text-slate-500">A final score requires this run to be linked to its saved static-analysis case.</p>`);
 }
 
 function short(h) { return h ? `${h.slice(0, 10)}…${h.slice(-6)}` : "Not reported"; }

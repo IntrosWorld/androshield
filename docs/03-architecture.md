@@ -330,6 +330,9 @@ The single dict every stage contributes to. Top-level keys:
 | `risk_score` | int \| null | rule engine (null ⇒ severity `Unknown`) |
 | `severity` | str | Low / Medium / High / Critical / Unknown |
 | `score_breakdown` | list | **every point, itemised** |
+| `final_score` | int, optional | Capped static + dynamic score after a hash-linked completed sandbox run |
+| `final_severity` | str, optional | Severity derived deterministically from `final_score` |
+| `final_score_breakdown` | list, optional | Static baseline plus applied runtime contribution; never replaces static breakdown |
 | `detected_behaviors` | list | human-readable behaviour labels |
 | `recommendations` | list | actionable next steps |
 | `errors` | list | non-fatal stage failures |

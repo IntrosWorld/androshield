@@ -100,6 +100,7 @@ def build_evidence(analysis: dict) -> dict:
             key: observation.get(key)
             for key in (
                 "id", "action_id", "action_kind", "ran", "duration", "dynamic_score",
+                "final_score", "final_severity",
                 "runtime_signals", "network", "frida", "ui_agent", "crash_count",
                 "reason", "timestamp",
             )

@@ -165,7 +165,7 @@ VirusTotal panel means "clean" or "no API key" — the badge says which.
 | Download PDF / CSV / JSON | `GET …/report.pdf`, `…/iocs.csv`, `…/iocs.json` | Browser download |
 | Run AI Review | `POST /api/agent/investigate/{id}` | `renderAgent()` with grounded hypotheses + audit |
 | Start Agentic Investigation | `POST /api/agent/workflow/{id}` | Approval-controlled sandbox proposal and observations |
-| Run manual sandbox | `POST /api/dynamic` | `renderDynamic()` with runtime findings |
+| Run manual sandbox | `POST /api/dynamic` | `renderDynamic()` with runtime findings and a hash-linked final score |
 
 Errors surface in a dedicated error box via `showError()` / `hideError()` using
 `textContent`, so a server error message containing attacker-derived text cannot inject

@@ -31,7 +31,7 @@ from .analyzer import static_analyzer
 from .genai import gemini_client
 from .intel import virustotal, apkid_scan
 from .ml import classifier as ml_classifier
-from .dynamic import sandbox as dyn_sandbox, frida_runner, ui_agent
+from .dynamic import final_scoring, sandbox as dyn_sandbox, frida_runner, ui_agent
 from .agent import orchestrator as agent_orchestrator
 from .agent import workflow as agent_workflow
 from . import analysis_service, db, optional_components, report as report_pdf, runtime_settings
@@ -635,8 +635,17 @@ async def _approve_agent_workflow_action(
         use_ui_agent=bool(config["use_ui_agent"]),
         serial=sandbox_serial,
         ui_agent_mode=str(config["ui_agent_mode"]),
+        sample_id=sample_id,
     )
     dynamic_result = json.loads(dynamic_response.body.decode("utf-8"))
+    if dynamic_result.get("final_score") is not None:
+        analysis.update({
+            "final_score": dynamic_result["final_score"],
+            "final_severity": dynamic_result["final_severity"],
+            "final_score_breakdown": dynamic_result.get("final_score_breakdown") or [],
+            "final_score_method": dynamic_result.get("final_score_method"),
+            "latest_dynamic": final_scoring.bounded_summary(dynamic_result),
+        })
     _set_workflow_progress(
         sample_id, "sandbox_completed",
         "Sandbox pass completed; converting output into bounded evidence.",
@@ -704,6 +713,7 @@ async def dynamic_analyze(
     use_ui_agent: bool = Form(False),
     serial: str = Form(None),
     ui_agent_mode: str = Form("tree"),
+    sample_id: str = Form(None),
 ):
     """Run the uploaded APK in the attached emulator and observe its behaviour.
 
@@ -718,6 +728,7 @@ async def dynamic_analyze(
         raise HTTPException(503, st.get("reason", "No emulator/device available."))
     if use_ui_agent and not ui_agent.health()["enabled"]:
         raise HTTPException(409, "AI UI Explorer is disabled; set UI_AGENT_ENABLED=true")
+    sample_id = sample_id.strip() if isinstance(sample_id, str) and sample_id.strip() else None
     ui_agent_mode = (ui_agent_mode if isinstance(ui_agent_mode, str) else "tree")
     ui_agent_mode = (ui_agent_mode or "tree").strip().lower()
     if use_ui_agent and ui_agent_mode not in {"tree", "vision"}:
@@ -744,6 +755,21 @@ async def dynamic_analyze(
                     f"'{dyn_sandbox.DEFAULT_SANDBOX_AVD}'",
                 )
         tmp_path, _size = await _spool_upload(file)
+        saved_sample = None
+        if sample_id:
+            saved_sample = await run_in_threadpool(db.get_sample, sample_id)
+            if not saved_sample:
+                raise HTTPException(404, "Static-analysis case not found")
+            if (saved_sample.get("analysis") or {}).get("risk_score") is None:
+                raise HTTPException(409, "Static analysis must complete before final scoring")
+            expected_hash = str(
+                ((saved_sample.get("analysis") or {}).get("file") or {}).get("sha256") or ""
+            ).lower()
+            actual_hash = await run_in_threadpool(_sha256_path, tmp_path)
+            if not expected_hash or actual_hash.lower() != expected_hash:
+                raise HTTPException(
+                    400, "Uploaded APK does not match the selected static-analysis case",
+                )
         package, main_activity = _apk_identity(tmp_path)
         if not package:
             raise HTTPException(400, "Could not read package name — not a valid APK?")
@@ -761,6 +787,26 @@ async def dynamic_analyze(
             )
         result["filename"] = file.filename
         result["main_activity"] = main_activity
+        if saved_sample and result.get("ran"):
+            analysis = saved_sample["analysis"]
+            combined = final_scoring.combine(
+                analysis.get("risk_score", 0), result.get("dynamic_score", 0),
+            )
+            result.update(combined)
+            result["timestamp"] = time.time()
+            analysis.update({
+                "final_score": combined["final_score"],
+                "final_severity": combined["final_severity"],
+                "final_score_breakdown": combined["final_score_breakdown"],
+                "final_score_method": combined["final_score_method"],
+                "latest_dynamic": final_scoring.bounded_summary(result),
+            })
+            await run_in_threadpool(
+                db.update_sample_artifacts,
+                sample_id,
+                analysis,
+                saved_sample.get("report") or {},
+            )
         return JSONResponse(result)
     except HTTPException:
         raise

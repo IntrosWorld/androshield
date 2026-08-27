@@ -156,6 +156,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('fd.append("ui_agent_mode", uiAgentMode)', JS)
         self.assertIn('if (geminiKey) data.gemini_api_key = geminiKey', JS)
 
+    def test_dynamic_run_links_static_case_and_renders_final_score(self):
+        self.assertIn('fd.append("sample_id", currentId)', JS)
+        self.assertIn("Final score after dynamic analysis", JS)
+        self.assertIn("final_score_breakdown", JS)
+        self.assertIn("Static ${Number(d.static_score)", JS)
+
     def test_optional_components_are_explicit_and_source_attributed(self):
         tag_with_id(HTML, "component-list")
         self.assertIn("Optional feature downloads", HTML)

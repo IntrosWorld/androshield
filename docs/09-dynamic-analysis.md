@@ -212,9 +212,12 @@ permission is intent, an observed send is fact.
 which is meaningfully stronger evidence than a manifest declaration: it means the user
 was successfully socially engineered into granting them.
 
-Dynamic scores are reported **separately** and are not folded into the static
-`risk_score`. Merging a 15-second observation with a full static analysis into one number
-would destroy the meaning of both.
+The static `risk_score` and `dynamic_score` remain separate and unchanged. When a dynamic
+run is linked to its saved static case by `sample_id` and SHA-256 verification, the API
+also reports an additive `final_score = min(static_score + dynamic_score, 100)`. Its own
+breakdown shows the static baseline and the runtime points that fit below the cap. A quiet
+or short runtime observation never reduces the static verdict, and an unlinked run does
+not claim a final score.
 
 ---
 
@@ -288,9 +291,20 @@ Runtime C2 endpoints observed by the network hooks are surfaced separately as
   "payload_dumps": ["/path/to/dump_1.dex"],
   "dynamic_score": 78,
   "score_breakdown": [{"category": "Sms Runtime", "points": 20, "detail": "observed in runtime logs"}, ...],
+  "static_score": 65,
+  "final_score": 100,
+  "final_severity": "Critical",
+  "final_score_method": "static_plus_dynamic_capped_v1",
+  "final_score_breakdown": [
+    {"category": "Static analysis baseline", "points": 65, "detail": "..."},
+    {"category": "Observed runtime behaviour", "points": 35, "detail": "..."}
+  ],
   "frida": {"ran": true, "events": [...], "antivm_applied": true}
 }
 ```
+
+The final fields are present only when `ran` is true and `sample_id` identifies the same
+APK. The endpoint checks the uploaded bytes against the stored SHA-256 before execution.
 
 Availability is checked before any work: `/api/health` reports
 `dynamic: {available, reason, devices}` and `frida_available`, and the endpoint returns

@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import os
 import re
 import tempfile
@@ -438,6 +439,62 @@ class RobustnessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("emulator-5554", kwargs["serial"])
         self.assertEqual(200, response.status_code)
 
+    async def test_linked_dynamic_run_returns_and_persists_final_score(self):
+        apk_bytes = b"PK\x03\x04matching-apk"
+        upload = UploadFile(filename="sample.apk", file=BytesIO(apk_bytes))
+        analysis = {
+            "file": {"sha256": hashlib.sha256(apk_bytes).hexdigest()},
+            "risk_score": 68,
+            "severity": "High",
+            "score_breakdown": [],
+        }
+        sandbox_state = {
+            "available": True,
+            "serial": "emulator-5554",
+            "devices": [{"serial": "emulator-5554", "avd_name": "FraudSandbox"}],
+        }
+        dynamic_result = {
+            "available": True, "ran": True, "duration": 15,
+            "dynamic_score": 21, "score_breakdown": [],
+        }
+        with patch.object(main.dyn_sandbox, "status", return_value=sandbox_state), \
+             patch.object(main, "_apk_identity", return_value=("org.test", ".Main")), \
+             patch.object(main.dyn_sandbox, "run_dynamic", return_value=dynamic_result), \
+             patch.object(main.db, "get_sample", return_value={
+                 "analysis": analysis, "report": {"generated_by": "test"},
+             }), \
+             patch.object(main.db, "update_sample_artifacts", return_value=True) as persist:
+            response = await main.dynamic_analyze(
+                upload, 15, False, False, None, "tree", "case-123",
+            )
+
+        payload = response.body.decode("utf-8")
+        self.assertIn('"final_score":89', payload)
+        self.assertEqual(68, analysis["risk_score"])
+        self.assertEqual(89, analysis["final_score"])
+        persist.assert_called_once()
+
+    async def test_linked_dynamic_run_rejects_a_different_apk_before_execution(self):
+        upload = UploadFile(filename="other.apk", file=BytesIO(b"different"))
+        sandbox_state = {
+            "available": True,
+            "serial": "emulator-5554",
+            "devices": [{"serial": "emulator-5554", "avd_name": "FraudSandbox"}],
+        }
+        with patch.object(main.dyn_sandbox, "status", return_value=sandbox_state), \
+             patch.object(main.db, "get_sample", return_value={
+                 "analysis": {"file": {"sha256": "0" * 64}, "risk_score": 30},
+                 "report": {},
+             }), \
+             patch.object(main.dyn_sandbox, "run_dynamic") as runner:
+            with self.assertRaises(HTTPException) as context:
+                await main.dynamic_analyze(
+                    upload, 15, False, False, None, "tree", "case-123",
+                )
+
+        self.assertEqual(400, context.exception.status_code)
+        runner.assert_not_called()
+
     async def test_analysis_failure_does_not_disclose_internal_details(self):
         upload = UploadFile(filename="sample.apk", file=BytesIO(b"PK\x03\x04test"))
         with patch.object(main.static_analyzer, "engine_available", return_value=True), \
@@ -460,6 +517,14 @@ class RobustnessTests(unittest.IsolatedAsyncioTestCase):
             "risk_score": 0,
             "severity": "Low",
             "score_breakdown": [],
+            "final_score": 12,
+            "final_severity": "Low",
+            "final_score_breakdown": [{
+                "category": "Observed runtime behaviour",
+                "points": 12,
+                "detail": "<b>runtime evidence</b>",
+            }],
+            "latest_dynamic": {"duration": 15, "dynamic_score": 12},
             "iocs": {"urls": ["http://x.test/<b>bad</b>"]},
             "agentic": {
                 "status": "completed", "provider": "test", "model": "fake",

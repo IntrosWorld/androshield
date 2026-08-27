@@ -365,10 +365,12 @@ must select one deliberately in the dashboard device dropdown. So a separate emu
 Then upload a **real, signed** APK, pick the sandbox device, and hit **Run in
 Emulator**. It installs → launches → captures **logcat, granted runtime permissions,
 running services, network endpoints** → uninstalls, and produces a dynamic-behaviour
+score. When the run is linked to the saved static case, the dashboard also shows an
+explainable final score (`min(static + dynamic, 100)`) without changing either component
 score. Tick **Frida hooks** for live API interception (SMS sends, HTTP URLs,
 `DexClassLoader`, `Runtime.exec`, clipboard, crypto) — needs `frida-server` on the
 emulator (the app shows setup steps if it's not). Endpoint: `POST /api/dynamic`
-(`file`, `duration`, `use_frida`, `use_ui_agent`, `serial`).
+(`file`, `duration`, `use_frida`, `use_ui_agent`, `serial`, optional `sample_id`).
 
 ### AI UI Explorer (optional)
 
