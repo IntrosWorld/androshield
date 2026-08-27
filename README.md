@@ -49,8 +49,8 @@ The APK was submitted only to `/api/analyze`; it was never installed or executed
 Key UI capabilities:
 
 - Drag-and-drop APK selection with clear static-analysis safety messaging.
-- Folder batch selection with persistent per-APK progress and results; batch mode uses
-  the same bounded static pipeline and never runs APKs in the emulator.
+- Folder batch selection with persistent per-APK progress and results, plus CSV export;
+  batch mode uses the same bounded static pipeline and never runs APKs in the emulator.
 - Explainable risk gauge, severity thresholds, score contributions, permissions, APIs, IOCs, signatures, and ATT&CK mapping.
 - Bounded local/Gemini investigation with an auditable action trail.
 - PDF and IOC exports, persisted sample history, and explicit emulator-only dynamic analysis.

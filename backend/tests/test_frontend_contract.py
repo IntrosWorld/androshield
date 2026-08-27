@@ -191,9 +191,15 @@ class FrontendContractTests(unittest.TestCase):
         tag_with_id(HTML, "batch-card")
         tag_with_id(HTML, "batch-summary")
         tag_with_id(HTML, "batch-list")
+        export_button = tag_with_id(HTML, "batch-export-btn")
+        self.assertIn("disabled", export_button)
         self.assertIn('/api/analysis-jobs/batch', JS)
         self.assertIn("async function waitForBatchJobs", JS)
         self.assertIn("data-batch-open", JS)
+        self.assertIn("function exportBatchCsv", JS)
+        self.assertIn('"classification", "analysis_status"', JS)
+        self.assertIn("Likely malicious", JS)
+        self.assertIn("Prevent spreadsheet applications", JS)
         self.assertIn("static analysis only", HTML.lower())
 
     def test_populated_results_use_the_analyst_workspace(self):

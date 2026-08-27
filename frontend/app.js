@@ -499,6 +499,7 @@ function renderBatchProgress() {
   const active = jobs.length - completed - failed;
   $("batch-card").classList.remove("hidden");
   $("batch-summary").textContent = `${completed} completed - ${active} active${failed ? ` - ${failed} failed` : ""}`;
+  $("batch-export-btn").disabled = !jobs.length || active > 0;
   $("batch-list").innerHTML = jobs.map(job => {
     const sample = job.sample;
     const status = job.status || "queued";
@@ -513,6 +514,58 @@ function renderBatchProgress() {
       ${job.sample_id ? `<button type="button" class="btn-secondary batch-open" data-batch-open="${esc(job.id)}">View result</button>` : `<span class="chip ${statusChipTone(status)}">${esc(status)}</span>`}
     </div>`;
   }).join("");
+}
+
+function batchClassification(job) {
+  if (job.status === "failed") return "Analysis failed";
+  const rawScore = job.sample?.analysis?.risk_score;
+  if (rawScore == null || rawScore === "") return "Unknown";
+  const score = Number(rawScore);
+  if (!Number.isFinite(score)) return "Unknown";
+  if (score >= 41) return "Likely malicious";
+  if (score >= 21) return "Suspicious";
+  return "Not flagged";
+}
+
+function csvCell(value) {
+  let text = plain(value).replace(/\r?\n/g, " ");
+  // Prevent spreadsheet applications from evaluating attacker-controlled metadata.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportBatchCsv() {
+  const jobs = Array.from(batchJobs.values());
+  if (!jobs.length || jobs.some(job => !["completed", "failed"].includes(job.status))) return;
+  const headers = [
+    "apk_name", "package_name", "sha256", "risk_score", "severity",
+    "classification", "analysis_status", "sample_id",
+  ];
+  const rows = jobs.map(job => {
+    const sample = job.sample || {};
+    const analysis = sample.analysis || {};
+    const score = analysis.risk_score;
+    return [
+      job.relativePath || job.filename,
+      sample.package_name || analysis.manifest?.package_name || "",
+      sample.sha256 || analysis.file?.sha256 || "",
+      score != null && score !== "" && Number.isFinite(Number(score)) ? Number(score) : "",
+      analysis.severity || "",
+      batchClassification(job),
+      job.status || "unknown",
+      job.sample_id || "",
+    ];
+  });
+  const csv = [headers, ...rows].map(row => row.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob(["\uFEFF", csv], {type: "text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `apk-batch-results-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 async function loadBatchSample(job) {
@@ -576,6 +629,8 @@ $("batch-list").addEventListener("click", event => {
   if (job.clientFile) setFile(job.clientFile);
   openSample(job.sample_id);
 });
+
+$("batch-export-btn").addEventListener("click", exportBatchCsv);
 
 $("analyze-btn").addEventListener("click", async () => {
   if (!selectedFile && !selectedBatchFiles.length) return;

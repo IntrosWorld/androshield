@@ -442,12 +442,18 @@
 
     <!-- Folder batch progress -->
     <section id="batch-card" class="glass rounded-2xl p-5 mb-8 hidden" aria-labelledby="batch-title">
-      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
         <div>
           <p class="eyebrow mb-1">Folder analysis</p>
           <h3 id="batch-title" class="text-base font-semibold text-white">Batch progress</h3>
         </div>
-        <p id="batch-summary" class="text-xs text-slate-400" role="status" aria-live="polite"></p>
+        <div class="flex flex-wrap items-center justify-end gap-3">
+          <p id="batch-summary" class="text-xs text-slate-400" role="status" aria-live="polite"></p>
+          <button id="batch-export-btn" type="button" class="btn-secondary" disabled>
+            <i class="ti ti-file-type-csv" aria-hidden="true"></i>
+            Export results CSV
+          </button>
+        </div>
       </div>
       <div id="batch-list" class="batch-list"></div>
     </section>
