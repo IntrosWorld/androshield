@@ -1,3 +1,4 @@
+
 # Generative-AI APK Fraud Analyzer
 
 Upload a suspicious Android APK → automated **static analysis** (manifest, permissions,
@@ -6,6 +7,10 @@ investigation report → PDF export. Built for banking-fraud / SOC first-level t
 
 > Static analysis only — uploaded APKs are **never executed**. See `plan.md` for the full
 > roadmap (dynamic sandbox + ML classifier are future phases).
+
+## System Architecture
+
+![System Architecture](archi.png)
 
 ## Quick start (Windows / PowerShell)
 
@@ -21,7 +26,7 @@ copy .env.example .env
 
 # start the server — use the venv's Python so androguard is found:
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
-```
+````
 
 > **Easiest:** just run **`run.bat`** (cmd) or **`.\run.ps1`** (PowerShell) from the
 > `backend` folder — these always use the venv's Python, no activation needed.
@@ -31,8 +36,8 @@ copy .env.example .env
 > The dashboard will show a red **"Engine offline"** badge and `/api/health` reports
 > `"analyzer_ready": false` if this happens.
 
-Open **http://localhost:8000** and drop in an `.apk`. Confirm
-http://localhost:8000/api/health shows `"analyzer_ready": true` first.
+Open **[http://localhost:8000](http://localhost:8000)** and drop in an `.apk`. Confirm
+[http://localhost:8000/api/health](http://localhost:8000/api/health) shows `"analyzer_ready": true` first.
 
 ### No APK to test with?
 
@@ -48,39 +53,45 @@ Upload `samples/test_fakebank.apk` — it scores **100/100 Critical** and exerci
 detector (SMS/accessibility/overlay permissions, SmsManager/DexClassLoader APIs, fake
 C2 domains + IP, a fake Telegram bot token, banking keywords, obfuscation signals).
 
-- API docs: http://localhost:8000/docs
-- Works with **no API key** — static analysis + scoring are fully local; only the
+* API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+* Works with **no API key** — static analysis + scoring are fully local; only the
   natural-language report needs Gemini.
 
 ## What it does
 
-| Stage | Module | Output |
-|-------|--------|--------|
-| Hash + metadata | `static_analyzer` | SHA256/MD5, package, version, SDKs |
-| Permissions | `analyzer/permissions.py` | dangerous-permission catalog + weights |
-| Certificate | `analyzer/cert_analysis.py` | unsigned / debug-cert / placeholder-identity red-flags |
-| Attack surface | `analyzer/components.py` | exported activities/services/receivers/providers |
-| Suspicious APIs | `analyzer/api_patterns.py` | SmsManager, AccessibilityService, DexClassLoader, … |
-| IOCs | `analyzer/iocs.py` | URLs, IPs, domains, Telegram tokens, secrets, keywords — incl. **Base64/hex auto-decode** |
-| Native libs | `static_analyzer._collect_native_strings` | scans bundled `.so` strings for hidden IOCs |
-| Obfuscation | `analyzer/obfuscation.py` | short names, multi-dex, entropy, dynamic loading |
-| YARA signatures | `analyzer/yara_scan.py` + `rules/android_fraud.yar` | malware-family signature matches (offline) |
-| APKiD | `intel/apkid_scan.py` | compiler/packer/obfuscator/anti-analysis fingerprint (offline) |
-| ML classifier | `ml/` | permission-based malware probability (RandomForest) |
-| MITRE ATT&CK | `analyzer/mitre.py` | maps findings to ATT&CK Mobile technique IDs (offline) |
-| Risk score | `analyzer/risk_scoring.py` | 0–100 + severity + itemised breakdown (hybrid: rules + ML) |
-| Threat intel | `intel/virustotal.py` | VirusTotal multi-engine corroboration (optional) |
-| AI report | `genai/gemini_client.py` | exec summary, attack chain, recommendations |
-| Export | `report.py` | PDF investigation report |
+| Stage           | Module                                              | Output                                                                                    |
+| --------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Hash + metadata | `static_analyzer`                                   | SHA256/MD5, package, version, SDKs                                                        |
+| Permissions     | `analyzer/permissions.py`                           | dangerous-permission catalog + weights                                                    |
+| Certificate     | `analyzer/cert_analysis.py`                         | unsigned / debug-cert / placeholder-identity red-flags                                    |
+| Attack surface  | `analyzer/components.py`                            | exported activities/services/receivers/providers                                          |
+| Suspicious APIs | `analyzer/api_patterns.py`                          | SmsManager, AccessibilityService, DexClassLoader, …                                       |
+| IOCs            | `analyzer/iocs.py`                                  | URLs, IPs, domains, Telegram tokens, secrets, keywords — incl. **Base64/hex auto-decode** |
+| Native libs     | `static_analyzer._collect_native_strings`           | scans bundled `.so` strings for hidden IOCs                                               |
+| Obfuscation     | `analyzer/obfuscation.py`                           | short names, multi-dex, entropy, dynamic loading                                          |
+| YARA signatures | `analyzer/yara_scan.py` + `rules/android_fraud.yar` | malware-family signature matches (offline)                                                |
+| APKiD           | `intel/apkid_scan.py`                               | compiler/packer/obfuscator/anti-analysis fingerprint (offline)                            |
+| ML classifier   | `ml/`                                               | permission-based malware probability (RandomForest)                                       |
+| MITRE ATT&CK    | `analyzer/mitre.py`                                 | maps findings to ATT&CK Mobile technique IDs (offline)                                    |
+| Risk score      | `analyzer/risk_scoring.py`                          | 0–100 + severity + itemised breakdown (hybrid: rules + ML)                                |
+| Threat intel    | `intel/virustotal.py`                               | VirusTotal multi-engine corroboration (optional)                                          |
+| AI report       | `genai/gemini_client.py`                            | exec summary, attack chain, recommendations                                               |
+| Export          | `report.py`                                         | PDF investigation report                                                                  |
+
+## Static Analysis Pipeline
+
+![Static Analysis Pipeline](staticpipline.png)
 
 ### VirusTotal (optional, free)
 
-Set `VT_API_KEY` in `.env` (free key: https://www.virustotal.com/gui/my-apikey — 4 req/min,
+Set `VT_API_KEY` in `.env` (free key: [https://www.virustotal.com/gui/my-apikey](https://www.virustotal.com/gui/my-apikey) — 4 req/min,
 500/day). The analyzer then looks up the APK's SHA256 + extracted domains against VirusTotal,
 shows real multi-engine detections, and folds them into the risk score (a confirmed
 multi-engine hit floors severity at High/Critical). With no key it's a silent no-op.
 
 ### Machine-learning classifier (optional)
+
+![Machine Learning Classifier](mlclassifer.png)
 
 A permission-based RandomForest gives a data-driven malware probability that's folded
 into the hybrid score (plan §7). A **demo model** (trained on synthetic data) ships so
@@ -147,25 +158,30 @@ emulator (the app shows setup steps if it's not). Endpoint: `POST /api/dynamic`
 > run real malware in an **isolated** AVD (plan §14).
 
 ## Dashboard & exports
+
 Upload, a risk gauge + itemised breakdown, AI explanation, YARA/MITRE/APKiD/ML/VirusTotal
 panels, a certificate & attack-surface panel, a **Recent Analyses** history (click to
 reload any past sample), and one-click exports: **PDF report**, **IOCs as CSV**, **IOCs as
 JSON** (`/api/samples/{id}/iocs.csv|json`).
 
 ## Run in Docker (isolated)
+
 Analyzing malware in a container keeps it off your host (plan §14). All deps ship
 manylinux wheels, so the build needs no compiler:
 
 ```bash
 GEMINI_API_KEY=... VT_API_KEY=... docker compose up --build
 ```
-Dashboard on http://localhost:8000; the SQLite history persists in `backend/data/`.
+
+Dashboard on [http://localhost:8000](http://localhost:8000); the SQLite history persists in `backend/data/`.
 
 ## Tech
+
 FastAPI · androguard (pure-Python, no Java/apktool/JADX needed) · Gemini · SQLite ·
 reportlab · vanilla JS + Tailwind + Chart.js dashboard.
 
 ## Project layout
+
 ```
 backend/app/
   main.py              FastAPI routes + static serving
@@ -173,5 +189,11 @@ backend/app/
   genai/gemini_client  LLM report (+ template fallback)
   db.py  report.py     SQLite + PDF
 frontend/              index.html + app.js (served by FastAPI)
+archi.png              system architecture
+staticpipeline.png     static analysis pipeline
+mlclassifer.png        ML classifier
 plan.md                full product vision
+```
+
+```
 ```
