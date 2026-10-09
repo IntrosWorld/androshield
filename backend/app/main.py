@@ -128,6 +128,7 @@ def _initialize_application() -> None:
     db.init_db()
     _remove_stale_temporary_uploads()
     runtime_settings.load_persisted()
+    ml_classifier.configure_from_environment()
     ready = static_analyzer.engine_available()
     log.info(
         "DB initialised. Gemini configured: %s | OpenRouter configured: %s | analyzer ready: %s",

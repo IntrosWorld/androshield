@@ -7,20 +7,11 @@ can degrade gracefully when no emulator is attached.
 import os
 import shutil
 import subprocess
+from .. import external_tools
 
 
 def adb_path():
-    p = shutil.which("adb")
-    if p:
-        return p
-    exe = "adb.exe" if os.name == "nt" else "adb"
-    for env in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
-        root = os.getenv(env)
-        if root:
-            cand = os.path.join(root, "platform-tools", exe)
-            if os.path.exists(cand):
-                return cand
-    return None
+    return external_tools.adb_path()
 
 
 def available() -> bool:
@@ -38,7 +29,7 @@ def _run(args, timeout=60, serial=None):
     try:
         # Decode as UTF-8 with replacement — logcat/dumpsys output contains bytes the
         # Windows default codepage (cp1252) can't decode, which otherwise crashes.
-        p = subprocess.run(cmd, capture_output=True, timeout=timeout,
+        p = subprocess.run(cmd, capture_output=True, timeout=timeout, env=external_tools.subprocess_environment(),
                            encoding="utf-8", errors="replace")
         return p.returncode, p.stdout or "", p.stderr or ""
     except subprocess.TimeoutExpired:
@@ -57,7 +48,7 @@ def _run_bytes(args, timeout=30, serial=None):
         cmd += ["-s", serial]
     cmd += args
     try:
-        p = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, timeout=timeout, env=external_tools.subprocess_environment())
         data = p.stdout or b""
         if len(data) > 12 * 1024 * 1024:
             return -4, b"", "adb binary response exceeded 12 MB"

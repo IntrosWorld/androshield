@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import db
+from . import db, external_tools
 
 
 BOOL_FIELDS = {
@@ -84,10 +84,12 @@ def public_settings() -> dict:
         for key, (env, default, minimum, maximum) in INT_FIELDS.items()
     })
     result.update({key: os.getenv(env, default) for key, (env, default) in TEXT_FIELDS.items()})
+    result.update({key: os.getenv(env, "") for key, (env, _kind) in external_tools.PATH_FIELDS.items()})
+    result["tool_paths"] = external_tools.status()
     result["gemini_key_configured"] = bool(os.getenv("GEMINI_API_KEY", "").strip())
     result["openrouter_key_configured"] = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
     result["virustotal_key_configured"] = bool(os.getenv("VT_API_KEY", "").strip())
-    result["ollama_cli_available"] = bool(shutil.which("ollama"))
+    result["ollama_cli_available"] = bool(external_tools.executable("APK_OLLAMA_PATH", "ollama"))
     return result
 
 
@@ -103,7 +105,7 @@ def _clean_text(value, field: str, *, maximum: int = 512) -> str:
 def update_settings(payload: dict) -> dict:
     if not isinstance(payload, dict):
         raise SettingsError("settings payload must be an object")
-    allowed = set(BOOL_FIELDS) | set(INT_FIELDS) | set(TEXT_FIELDS) | set(SECRET_FIELDS) | {
+    allowed = set(BOOL_FIELDS) | set(INT_FIELDS) | set(TEXT_FIELDS) | set(SECRET_FIELDS) | set(external_tools.PATH_FIELDS) | {
         "clear_gemini_api_key", "clear_openrouter_api_key", "clear_virustotal_api_key",
     }
     unknown = sorted(set(payload) - allowed)
@@ -112,6 +114,20 @@ def update_settings(payload: dict) -> dict:
 
     persisted: dict[str, tuple[str, bool]] = {}
     deleted: list[str] = []
+    for field, (env, kind) in external_tools.PATH_FIELDS.items():
+        if field not in payload:
+            continue
+        value = _clean_text(payload[field], field, maximum=2048)
+        if value:
+            location = external_tools.resolve_path(value)
+            valid = location.is_dir() if kind == "directory" else location.is_file()
+            if not valid:
+                raise SettingsError(f"{field} must point to an existing {kind}")
+            if field in {"adb_executable", "emulator_executable", "ollama_executable"} and os.name == "nt" and location.suffix.lower() != ".exe":
+                raise SettingsError(f"{field} must point to a Windows .exe, not an APK or script")
+            if field == "static_model_path" and location.suffix.lower() not in {".pkl", ".joblib"}:
+                raise SettingsError("static_model_path must be a trusted .pkl or .joblib model")
+        persisted[env] = (value, False)
     for key, (env, _default) in BOOL_FIELDS.items():
         if key in payload:
             if not isinstance(payload[key], bool):
@@ -166,7 +182,7 @@ def import_gguf(path_value: str, model_name: str) -> dict:
     source = Path(path_text).expanduser().resolve()
     if source.suffix.lower() != ".gguf" or not source.is_file():
         raise SettingsError("model_path must point to an existing .gguf file")
-    ollama = shutil.which("ollama")
+    ollama = external_tools.executable("APK_OLLAMA_PATH", "ollama")
     if not ollama:
         raise SettingsError("Ollama CLI was not found. Install or start Ollama first")
     from_path = source.as_posix().replace('"', '\\"')
@@ -176,7 +192,7 @@ def import_gguf(path_value: str, model_name: str) -> dict:
         try:
             completed = subprocess.run(
                 [ollama, "create", name, "--file", str(modelfile)],
-                capture_output=True, text=True, timeout=1800, check=False,
+                capture_output=True, text=True, timeout=1800, check=False, env=external_tools.subprocess_environment(),
             )
         except subprocess.TimeoutExpired as exc:
             raise SettingsError("Ollama model import timed out") from exc

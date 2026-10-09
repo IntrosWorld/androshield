@@ -13,6 +13,7 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+from . import external_tools
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -35,16 +36,7 @@ class ComponentError(RuntimeError):
 
 
 def _sdk_root() -> Path | None:
-    for name in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
-        value = os.getenv(name, "").strip()
-        if value and Path(value).is_dir():
-            return Path(value).resolve()
-    adb = shutil.which("adb")
-    if adb:
-        candidate = Path(adb).resolve().parent.parent
-        if candidate.is_dir():
-            return candidate
-    return None
+    return external_tools.sdk_root()
 
 
 def _sdk_tool(root: Path | None, name: str) -> Path | None:
@@ -77,20 +69,21 @@ def _frida_version() -> str:
 
 
 def _frida_cache_path(version: str) -> Path:
+    selected = os.getenv("APK_FRIDA_SERVER_PATH", "").strip()
+    if selected:
+        return external_tools.resolve_path(selected)
     storage = Path(os.getenv("APK_DESKTOP_DATA_DIR") or REPO_ROOT)
     return storage / "tools" / "frida" / f"frida-server-{version}-x86_64"
 
 
 def _sandbox_avd_exists(root: Path | None) -> bool:
-    if not root:
-        return False
-    emulator = root / "emulator" / ("emulator.exe" if os.name == "nt" else "emulator")
-    if not emulator.is_file():
+    emulator = external_tools.emulator_path(root)
+    if not emulator:
         return False
     try:
         completed = subprocess.run(
             [str(emulator), "-list-avds"], capture_output=True, text=True,
-            timeout=8, check=False,
+            timeout=8, check=False, env=external_tools.subprocess_environment(),
         )
         return "FraudSandbox" in {line.strip() for line in completed.stdout.splitlines()}
     except (OSError, subprocess.TimeoutExpired):
@@ -99,7 +92,7 @@ def _sandbox_avd_exists(root: Path | None) -> bool:
 
 def component_catalog() -> dict:
     installed_models = _ollama_models()
-    ollama_available = bool(shutil.which("ollama"))
+    ollama_available = bool(external_tools.executable("APK_OLLAMA_PATH", "ollama"))
     components = []
     for component_id, spec in MODEL_PACKS.items():
         components.append({
@@ -116,7 +109,7 @@ def component_catalog() -> dict:
     sdkmanager = _sdk_tool(root, "sdkmanager")
     avdmanager = _sdk_tool(root, "avdmanager")
     system_image = bool(root and (root / "system-images" / "android-35" / "google_apis" / "x86_64").is_dir())
-    emulator = bool(root and (root / "emulator" / ("emulator.exe" if os.name == "nt" else "emulator")).is_file())
+    emulator = bool(external_tools.emulator_path(root))
     avd_exists = _sandbox_avd_exists(root)
     components.append({
         "id": "android-sandbox", "name": "Android analysis sandbox", "kind": "sandbox",
@@ -152,13 +145,13 @@ def _set_job(job_id: str, **values) -> None:
 
 def _run_model_install(job_id: str, component_id: str) -> None:
     spec = MODEL_PACKS[component_id]
-    ollama = shutil.which("ollama")
+    ollama = external_tools.executable("APK_OLLAMA_PATH", "ollama")
     if not ollama:
         raise ComponentError("Ollama is not installed")
     _set_job(job_id, message=f"Downloading {spec['model']} from Ollama...")
     completed = subprocess.run(
         [ollama, "pull", spec["model"]], capture_output=True, text=True,
-        timeout=7200, check=False,
+        timeout=7200, check=False, env=external_tools.subprocess_environment(),
     )
     if completed.returncode != 0:
         raise ComponentError((completed.stderr or completed.stdout or "Ollama download failed")[-1500:])
@@ -183,7 +176,7 @@ def _run_sandbox_install(job_id: str) -> None:
         command = [sdkmanager, f"--sdk_root={root}", "--install", "platform-tools", "emulator", "system-images;android-35;google_apis;x86_64"]
     completed = subprocess.run(
         command, stdin=subprocess.DEVNULL, capture_output=True, text=True,
-        timeout=10800, check=False,
+        timeout=10800, check=False, env=external_tools.subprocess_environment(),
     )
     if completed.returncode != 0:
         detail = completed.stderr or completed.stdout or "Android SDK download failed"
@@ -191,6 +184,8 @@ def _run_sandbox_install(job_id: str) -> None:
 
 
 def _run_frida_install(job_id: str) -> None:
+    if os.getenv("APK_FRIDA_SERVER_PATH", "").strip():
+        raise ComponentError("Clear the manually selected Frida server path before downloading a managed copy")
     version = _frida_version()
     if not version:
         raise ComponentError("The Python Frida package is not installed")

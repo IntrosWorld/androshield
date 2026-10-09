@@ -721,6 +721,22 @@
           </div>
         </section>
 
+        <section class="settings-section" aria-labelledby="settings-tools-title">
+          <h3 id="settings-tools-title">External tool locations</h3>
+          <p>Point to tools already installed on this computer. Saved paths take priority; leave a field blank to use automatic detection. Static analysis needs none of these tools.</p>
+          <div class="settings-grid">
+            <div class="field field-wide"><label for="setting-android-sdk">Android SDK folder</label><input id="setting-android-sdk" class="control" type="text" autocomplete="off" placeholder="D:\Android\Sdk" /><p id="tool-android_sdk_dir" class="field-help"></p></div>
+            <div class="field field-wide"><label for="setting-adb">ADB executable</label><input id="setting-adb" class="control" type="text" autocomplete="off" placeholder="D:\Android\Sdk\platform-tools\adb.exe" /><p id="tool-adb_executable" class="field-help"></p></div>
+            <div class="field field-wide"><label for="setting-emulator">Android emulator executable</label><input id="setting-emulator" class="control" type="text" autocomplete="off" placeholder="D:\Android\Sdk\emulator\emulator.exe" /><p id="tool-emulator_executable" class="field-help"></p></div>
+            <div class="field field-wide"><label for="setting-avd">Android virtual-device folder</label><input id="setting-avd" class="control" type="text" autocomplete="off" placeholder="D:\Android\avd" /><p id="tool-android_avd_dir" class="field-help"></p></div>
+            <div class="field field-wide"><label for="setting-java">Java JDK folder</label><input id="setting-java" class="control" type="text" autocomplete="off" placeholder="D:\Java\jdk-21" /><p id="tool-java_home" class="field-help"></p></div>
+            <div class="field field-wide"><label for="setting-ollama-exe">Ollama executable</label><input id="setting-ollama-exe" class="control" type="text" autocomplete="off" placeholder="D:\Ollama\ollama.exe" /><p id="tool-ollama_executable" class="field-help"></p></div>
+            <div class="field field-wide"><label for="setting-frida-server">Frida server file for the emulator</label><input id="setting-frida-server" class="control" type="text" autocomplete="off" placeholder="D:\Android\frida-server-android-x86_64" /><p id="tool-frida_server_path" class="field-help"></p><p class="field-help">This is an Android binary. It must be started inside the emulator, never on this computer.</p></div>
+            <div class="field field-wide"><label for="setting-static-model">Optional static ML model</label><input id="setting-static-model" class="control" type="text" autocomplete="off" placeholder="models\apk_static_model.joblib" /><p id="tool-static_model_path" class="field-help"></p><p class="field-help">Use only a trusted model you trained or verified. Pickle/joblib models can execute Python when loaded. Restart the app after changing this path.</p></div>
+          </div>
+          <p class="field-help">Relative paths start inside APK Fraud Analyzer Data in the desktop app. After moving to another computer, update any missing paths. Enter paths without surrounding quotes. The Ollama service address and GGUF import location are configured separately below.</p>
+        </section>
+
         <section class="settings-section" aria-labelledby="settings-downloads-title">
           <h3 id="settings-downloads-title">Optional feature downloads</h3>
           <p>Install large capabilities only when needed. Files come from their official upstream source.</p>

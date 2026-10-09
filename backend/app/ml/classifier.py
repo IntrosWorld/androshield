@@ -28,6 +28,19 @@ def model_path() -> str:
     return os.path.abspath(_MODEL_PATH)
 
 
+def configure_from_environment() -> None:
+    """Apply persisted model selection at startup, before accepting analysis jobs."""
+    global _MODEL_PATH, _bundle, _load_attempted
+    from ..external_tools import resolve_path
+    selected = os.getenv("APK_STATIC_MODEL_PATH", "").strip()
+    target = str(resolve_path(selected)) if selected else (
+        _RICH_MODEL_PATH if os.path.exists(_RICH_MODEL_PATH) else _LEGACY_MODEL_PATH
+    )
+    with _load_lock:
+        if target != _MODEL_PATH:
+            _MODEL_PATH, _bundle, _load_attempted = target, None, False
+
+
 def available() -> bool:
     if not os.path.exists(_MODEL_PATH):
         return False

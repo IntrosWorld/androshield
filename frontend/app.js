@@ -77,6 +77,12 @@ $("theme-toggle")?.addEventListener("click", () => {
 let settingsData = null;
 const settingValue = (id) => $(id)?.value?.trim() || "";
 const settingNumber = (id) => Number.parseInt($(id)?.value, 10);
+const toolPathFields = {
+  android_sdk_dir: 'setting-android-sdk', adb_executable: 'setting-adb',
+  emulator_executable: 'setting-emulator', android_avd_dir: 'setting-avd',
+  java_home: 'setting-java', ollama_executable: 'setting-ollama-exe',
+  frida_server_path: 'setting-frida-server', static_model_path: 'setting-static-model',
+};
 
 function setSettingsStatus(message, tone = "") {
   const status = $("settings-status");
@@ -87,6 +93,14 @@ function setSettingsStatus(message, tone = "") {
 
 function renderSettings(data) {
   settingsData = data;
+  for (const [field, id] of Object.entries(toolPathFields)) {
+    $(id).value = data[field] || '';
+    const state = data.tool_paths?.[field];
+    const label = $(`tool-${field}`);
+    if (label) label.textContent = state?.available
+      ? `Found (${state.source}): ${state.path}`
+      : state?.path ? `Not found: ${state.path}` : 'Not configured or detected';
+  }
   $("setting-external-enabled").checked = Boolean(data.external_api_enabled);
   $("setting-agent-enabled").checked = Boolean(data.agent_enabled);
   $("setting-agent-workflow-enabled").checked = Boolean(data.agent_workflow_enabled);
@@ -215,6 +229,7 @@ function collectSettings() {
   if (geminiKey) data.gemini_api_key = geminiKey;
   if (openrouterKey) data.openrouter_api_key = openrouterKey;
   if (vtKey) data.virustotal_api_key = vtKey;
+  for (const [field, id] of Object.entries(toolPathFields)) data[field] = settingValue(id);
   return data;
 }
 
