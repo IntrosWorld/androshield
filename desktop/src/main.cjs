@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, shell, session } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, session, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { startBackend } = require('./backend.cjs');
@@ -24,6 +24,7 @@ function createWindow() {
   window = new BrowserWindow({ width: 1440, height: 940, minWidth: 1000, minHeight: 700,
     title: 'APK Fraud Analyzer', backgroundColor: '#080b10', show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false,
+      preload: path.join(__dirname, 'preload.cjs'),
       partition: 'persist:analyzer' } });
   window.once('ready-to-show', () => window.show());
   window.webContents.on('will-navigate', (event, url) => {
@@ -85,10 +86,22 @@ app.on('before-quit', event => {
 });
 app.on('window-all-closed', () => app.quit());
 if (ownsLock) app.whenReady().then(() => {
+  const themeFile = path.join(app.getPath('userData'), 'theme.json');
+  const trusted = event => window && event.sender === window.webContents && isLocal(event.senderFrame?.url, origin);
+  ipcMain.on('desktop:theme-read', event => {
+    event.returnValue = 'dark';
+    if (!trusted(event)) return;
+    try { event.returnValue = JSON.parse(fs.readFileSync(themeFile, 'utf8')); } catch { /* First launch. */ }
+  });
+  ipcMain.on('desktop:theme-write', (event, theme) => {
+    if (trusted(event) && ['dark', 'light'].includes(theme)) {
+      try { fs.writeFileSync(themeFile, JSON.stringify(theme)); } catch { /* Read-only profile. */ }
+    }
+  });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     { label: 'File', submenu: [{ label: 'Open APK…', accelerator: 'CmdOrCtrl+O', click: () => {
-      if (ready && window) void window.webContents.executeJavaScript("document.querySelector('input[type=file][accept*=apk]')?.click()");
+      if (ready && window) void window.webContents.executeJavaScript("document.querySelector('input[type=file][accept*=apk]')?.click()", true);
     } }, { type: 'separator' }, { role: 'quit' }] },
     { role: 'editMenu' }, { label: 'View', submenu: [{ role: 'reload' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }, ...(!app.isPackaged ? [{ role: 'toggleDevTools' }] : [])] },
     { label: 'Help', submenu: [{ label: 'Open data folder', click: () => { void shell.openPath(app.getPath('userData')); } },

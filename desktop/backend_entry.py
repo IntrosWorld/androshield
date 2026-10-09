@@ -37,8 +37,18 @@ def main():
     os.environ['PYTHONUNBUFFERED'] = '1'
     if not getattr(sys, 'frozen', False):
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
+    # Initialize the optional native numerical runtime on the main thread before
+    # FastAPI workers load joblib/ML. Its first DLL import can hang in a Windows
+    # worker thread when the interpreter is launched with redirected handles.
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        pass
     import uvicorn
-    from app.main import app
+    from app.main import app, ml_classifier, frida_runner, apkid_scan
+    ml_classifier.available()
+    frida_runner.available()
+    apkid_scan.available()
     server = uvicorn.Server(uvicorn.Config(DesktopGate(app, config['token']),
         host='127.0.0.1', port=0, log_level='warning', access_log=False, loop='asyncio'))
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -47,7 +57,16 @@ def main():
 
     def parent_watch():
         # EOF also stops the backend if Electron crashes.
-        sys.stdin.readline()
+        try:
+            if os.name == 'nt':
+                # Read the pipe directly without holding Python's buffered IO lock.
+                import _winapi
+                import msvcrt
+                _winapi.ReadFile(msvcrt.get_osfhandle(sys.stdin.fileno()), 1)
+            else:
+                os.read(sys.stdin.fileno(), 1)
+        except OSError:
+            pass  # Broken parent pipe is also a shutdown request.
         server.should_exit = True
     threading.Thread(target=parent_watch, daemon=True).start()
 

@@ -14,6 +14,8 @@ test('private backend rejects browsers, persists settings, and shuts down', { ti
     assert.equal((await fetch(`${connection.origin}/api/settings`)).status, 403);
     assert.equal((await fetch(`${connection.origin}/api/settings`, { headers: { 'X-Desktop-Token': 'wrong' } })).status, 403);
     const headers = { 'X-Desktop-Token': connection.token, 'Content-Type': 'application/json' };
+    const health = await fetch(`${connection.origin}/api/health`, { headers, signal: AbortSignal.timeout(30000) }).then(r => r.json());
+    assert.equal(health.analyzer_ready, true);
     const response = await fetch(`${connection.origin}/api/settings`, { method: 'PUT', headers, body: JSON.stringify({ external_api_enabled: false }) });
     assert.equal(response.status, 200);
     await backend.stop();

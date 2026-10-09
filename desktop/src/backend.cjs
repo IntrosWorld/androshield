@@ -41,7 +41,7 @@ function startBackend({ root, resources, packaged, data, onExit = () => {} }) {
   child.stdin.on('error', () => {});
   child.stdin.write(JSON.stringify({ token, data, frontend: path.join(packaged ? resources : path.join(root, 'build'), 'frontend') }) + '\n');
   function stop() {
-    if (stopping || child.exitCode !== null) return Promise.resolve();
+    if (stopping || child.exitCode !== null || child.signalCode !== null || !child.pid) return Promise.resolve();
     stopping = true;
     return new Promise(resolve => {
       child.once('exit', resolve);
