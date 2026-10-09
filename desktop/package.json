@@ -14,7 +14,8 @@
     "smoke": "npm run assets && node scripts/smoke.cjs",
     "build:backend": "node scripts/build-backend.cjs",
     "pack": "npm run assets && npm run build:backend && electron-builder --dir",
-    "dist": "npm run assets && npm run build:backend && electron-builder"
+    "dist": "npm run assets && npm run build:backend && electron-builder",
+    "portable": "npm run assets && npm run build:backend && node scripts/package-portable.cjs && node scripts/write-portable-launcher.cjs"
   },
   "devDependencies": {
     "electron": "44.7.0",
@@ -34,6 +35,7 @@
     ],
     "win": { "target": "nsis", "signExecutable": false },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false },
+    "portable": { "artifactName": "APK-Fraud-Analyzer-Portable-${version}.${ext}", "requestExecutionLevel": "user", "unpackDirName": false, "useZip": true },
     "mac": { "target": "dmg", "category": "public.app-category.developer-tools" },
     "linux": { "target": "AppImage", "category": "Development" }
   }

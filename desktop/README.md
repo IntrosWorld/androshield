@@ -69,6 +69,30 @@ profile so existing history is untouched.
 
 ## Package
 
+### Portable Windows app
+
+Run `npm run portable` to create `dist/APK-Fraud-Analyzer-Portable-0.1.0.exe`.
+Double-click it from a writable folder or USB drive; no installer, administrator
+rights, Python, or Node.js installation is required. History, settings, provider
+keys, theme, and browser profile live in **APK Fraud Analyzer Data** beside the EXE.
+Move that folder together with the EXE to retain your workspace. Existing installed
+app history is not copied automatically. Close the app before moving it or ejecting
+the drive. Optional Android SDK/emulator and Ollama installations remain external.
+
+The launcher extracts its runtime to a unique Windows temporary folder at each
+launch and cleans that runtime up on normal exit. Startup can take longer than the
+installed version and requires roughly 1 GB of free temporary space. The build also
+produces **Run Portable.cmd**: keep it beside the EXE and double-click it to put
+temporary runtime files on the portable drive instead of the Windows system drive.
+This is useful when C: is low on space and does not change global Windows settings.
+This is an unsigned Windows x64 build. To verify the actual
+portable launcher, set `APK_DESKTOP_EXECUTABLE` to its full path and
+then run `node scripts/smoke-portable.cjs`. The test copies the
+launcher into `build/portable-tests` and verifies analysis, exports, and persistence
+across relaunch without touching your data.
+
+### Installed app
+
 Install the build dependency into the same backend environment, then build:
 
 ```powershell

@@ -16,6 +16,8 @@ The Electron desktop app starts and stops its own local Python engine, bundles t
 dashboard assets, and stores desktop history and settings in the OS user-data folder.
 From `desktop`, run `npm ci` and `npm start` after installing the backend dependencies.
 See [desktop setup, tests, and packaging](desktop/README.md) for details.
+For a Windows app that runs without installation, run `npm run portable` from
+`desktop`. Its data stays in `APK Fraud Analyzer Data` beside the portable EXE.
 
 ## Dashboard
 

@@ -3,13 +3,25 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { startBackend } = require('./backend.cjs');
 const { isLocal, isExport, externalURL } = require('./policy.cjs');
+const { profilePath } = require('./profile.cjs');
 let window, backend, origin;
 let quitting = false;
 let ready = false;
 const root = path.join(__dirname, '..');
 app.setName('APK Fraud Analyzer');
-if (process.env.APK_DESKTOP_USER_DATA) app.setPath('userData', process.env.APK_DESKTOP_USER_DATA);
-const ownsLock = app.requestSingleInstanceLock();
+const profile = profilePath(process.env);
+let profileError;
+if (profile) {
+  try {
+    fs.mkdirSync(profile, { recursive: true });
+    fs.accessSync(profile, fs.constants.W_OK);
+    app.setPath('userData', profile);
+    app.setPath('sessionData', profile);
+    fs.mkdirSync(path.join(profile, 'crashes'), { recursive: true });
+    app.setPath('crashDumps', path.join(profile, 'crashes'));
+  } catch (error) { profileError = error; }
+}
+const ownsLock = Boolean(profileError) || app.requestSingleInstanceLock();
 if (!ownsLock) app.quit();
 app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
 
@@ -86,12 +98,23 @@ app.on('before-quit', event => {
 });
 app.on('window-all-closed', () => app.quit());
 if (ownsLock) app.whenReady().then(() => {
+  if (profileError) {
+    dialog.showErrorBox('Cannot open data folder', `Move the portable app to a writable folder, then retry.\n\n${profile}\n${profileError.message}`);
+    app.quit();
+    return;
+  }
   const themeFile = path.join(app.getPath('userData'), 'theme.json');
   const trusted = event => window && event.sender === window.webContents && isLocal(event.senderFrame?.url, origin);
   ipcMain.on('desktop:theme-read', event => {
-    event.returnValue = 'dark';
-    if (!trusted(event)) return;
-    try { event.returnValue = JSON.parse(fs.readFileSync(themeFile, 'utf8')); } catch { /* First launch. */ }
+    let theme = 'dark';
+    if (trusted(event)) {
+      try {
+        const saved = JSON.parse(fs.readFileSync(themeFile, 'utf8'));
+        if (['dark', 'light'].includes(saved)) theme = saved;
+      } catch { /* First launch. */ }
+    }
+    // Setting returnValue sends the synchronous reply immediately; reply once.
+    event.returnValue = theme;
   });
   ipcMain.on('desktop:theme-write', (event, theme) => {
     if (trusted(event) && ['dark', 'light'].includes(theme)) {
