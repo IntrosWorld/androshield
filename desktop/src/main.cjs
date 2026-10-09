@@ -19,6 +19,11 @@ if (profile) {
     app.setPath('sessionData', profile);
     fs.mkdirSync(path.join(profile, 'crashes'), { recursive: true });
     app.setPath('crashDumps', path.join(profile, 'crashes'));
+    for (const folder of ['tmp', 'exports', 'logs']) fs.mkdirSync(path.join(profile, folder), { recursive: true });
+    app.setPath('temp', path.join(profile, 'tmp'));
+    app.setPath('downloads', path.join(profile, 'exports'));
+    app.setAppLogsPath(path.join(profile, 'logs'));
+    process.env.TEMP = process.env.TMP = path.join(profile, 'tmp');
   } catch (error) { profileError = error; }
 }
 const ownsLock = Boolean(profileError) || app.requestSingleInstanceLock();

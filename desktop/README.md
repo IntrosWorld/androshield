@@ -79,12 +79,23 @@ Move that folder together with the EXE to retain your workspace. Existing instal
 app history is not copied automatically. Close the app before moving it or ejecting
 the drive. Optional Android SDK/emulator and Ollama installations remain external.
 
-The launcher extracts its runtime to a unique Windows temporary folder at each
-launch and cleans that runtime up on normal exit. Startup can take longer than the
-installed version and requires roughly 1 GB of free temporary space. The build also
-produces **Run Portable.cmd**: keep it beside the EXE and double-click it to put
-temporary runtime files on the portable drive instead of the Windows system drive.
-This is useful when C: is low on space and does not change global Windows settings.
+The EXE extracts its runtime once into **APK Fraud Analyzer Data/runtime** and reuses
+it on subsequent launches. Temporary files, browser caches, crash dumps, logs, and
+the default export folder also stay inside that data folder. No CMD launcher is
+needed. Allow roughly 1 GB beside the EXE for extraction, plus room for your data.
+New builds use a content-specific runtime folder; old runtime folders may be removed
+manually while the app is closed. Windows itself and separately installed tools can
+still maintain their own files outside this folder.
+
+In **Settings → External tool locations**, enter the Android SDK folder, ADB and
+emulator executables, AVD folder, Java home, Ollama executable, Android Frida-server
+binary, or trusted static classifier model. Blank fields use available detection;
+explicit paths take precedence and missing selections are reported instead of silently
+switching tools. Relative paths resolve inside **APK Fraud Analyzer Data**, so tools
+stored there can move with the app. Absolute paths may need updating on another PC.
+Restart after changing the static classifier model. Basic static analysis needs none
+of these external tools. Dynamic analysis requires a separately configured emulator;
+Ollama requires its service and model. External tools manage their own storage.
 This is an unsigned Windows x64 build. To verify the actual
 portable launcher, set `APK_DESKTOP_EXECUTABLE` to its full path and
 then run `node scripts/smoke-portable.cjs`. The test copies the

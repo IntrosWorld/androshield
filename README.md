@@ -17,7 +17,10 @@ dashboard assets, and stores desktop history and settings in the OS user-data fo
 From `desktop`, run `npm ci` and `npm start` after installing the backend dependencies.
 See [desktop setup, tests, and packaging](desktop/README.md) for details.
 For a Windows app that runs without installation, run `npm run portable` from
-`desktop`. Its data stays in `APK Fraud Analyzer Data` beside the portable EXE.
+`desktop`. Double-click the EXE directly; its runtime cache, history, settings, and
+temporary files stay in `APK Fraud Analyzer Data` beside it. Configure optional
+ADB, SDK, emulator, Java, Ollama, and model paths in Settings. Move the EXE and data
+folder together to another PC, then update any absolute external tool paths.
 
 ## Dashboard
 

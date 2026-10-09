@@ -15,7 +15,7 @@
     "build:backend": "node scripts/build-backend.cjs",
     "pack": "npm run assets && npm run build:backend && electron-builder --dir",
     "dist": "npm run assets && npm run build:backend && electron-builder",
-    "portable": "npm run assets && npm run build:backend && node scripts/package-portable.cjs && node scripts/write-portable-launcher.cjs"
+    "portable": "npm run assets && npm run build:backend && node scripts/package-portable.cjs"
   },
   "devDependencies": {
     "electron": "44.7.0",
