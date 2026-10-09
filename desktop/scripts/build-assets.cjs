@@ -16,6 +16,7 @@ html = html.replace('<script src="https://cdn.tailwindcss.com"></script>', '<lin
 fs.writeFileSync(path.join(output, 'index.html'), html);
 fs.copyFileSync(path.join(root, 'node_modules/chart.js/dist/chart.umd.js'), path.join(output, 'chart.umd.js'));
 fs.copyFileSync(path.join(root, 'node_modules/chart.js/LICENSE.md'), path.join(output, 'CHART-LICENSE.md'));
+fs.copyFileSync(path.join(root, 'node_modules/tailwindcss/LICENSE'), path.join(output, 'TAILWIND-LICENSE.txt'));
 fs.writeFileSync(path.join(root, 'build/tailwind.css'), '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n');
 execFileSync(process.execPath, [path.join(root, 'node_modules/tailwindcss/lib/cli.js'),
   '-i', path.join(root, 'build/tailwind.css'), '-o', path.join(output, 'desktop-tailwind.css'),

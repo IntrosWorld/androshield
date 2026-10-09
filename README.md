@@ -10,6 +10,13 @@ investigation report → PDF export. Built for banking-fraud / SOC first-level t
 > Runtime analysis is a separate, explicit `/api/dynamic` action that targets an attached
 > isolated emulator only.
 
+## Desktop application
+
+The Electron desktop app starts and stops its own local Python engine, bundles the
+dashboard assets, and stores desktop history and settings in the OS user-data folder.
+From `desktop`, run `npm ci` and `npm start` after installing the backend dependencies.
+See [desktop setup, tests, and packaging](desktop/README.md) for details.
+
 ## Dashboard
 
 The analyst console keeps upload, deterministic triage, evidence review, optional AI,

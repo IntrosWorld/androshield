@@ -20,8 +20,20 @@ test('private backend rejects browsers, persists settings, and shuts down', { ti
     assert.equal(response.status, 200);
     await backend.stop();
     await assert.rejects(fetch(`${connection.origin}/api/settings`));
-    backend = launch();
+    const previousModel = process.env.APK_STATIC_MODEL_PATH;
+    try {
+      // Distribution contains no trained model; still initialize native imports.
+      process.env.APK_STATIC_MODEL_PATH = path.join(data, 'missing-model.pkl');
+      backend = launch();
+    } finally {
+      if (previousModel === undefined) delete process.env.APK_STATIC_MODEL_PATH;
+      else process.env.APK_STATIC_MODEL_PATH = previousModel;
+    }
     connection = await backend.ready;
+    const packagedHealth = await fetch(`${connection.origin}/api/health`, {
+      headers: { 'X-Desktop-Token': connection.token }, signal: AbortSignal.timeout(30000),
+    }).then(r => r.json());
+    assert.equal(packagedHealth.ml_model_loaded, false);
     const settings = await fetch(`${connection.origin}/api/settings`, { headers: { 'X-Desktop-Token': connection.token } }).then(r => r.json());
     assert.equal(settings.external_api_enabled, false);
     assert.ok(fs.existsSync(path.join(data, 'analyzer.db')));

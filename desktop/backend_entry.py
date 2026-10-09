@@ -46,9 +46,12 @@ def main():
         pass
     import uvicorn
     from app.main import app, ml_classifier, frida_runner, apkid_scan
-    ml_classifier.available()
+    from app.analyzer import yara_scan
+    # model_info also primes the optional loader when no model is bundled.
+    ml_classifier.model_info()
     frida_runner.available()
     apkid_scan.available()
+    yara_scan.available()
     server = uvicorn.Server(uvicorn.Config(DesktopGate(app, config['token']),
         host='127.0.0.1', port=0, log_level='warning', access_log=False, loop='asyncio'))
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
