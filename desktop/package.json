@@ -1,0 +1,39 @@
+{
+  "name": "apk-fraud-analyzer-desktop",
+  "productName": "APK Fraud Analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local APK fraud analysis desktop workspace",
+  "author": "APK Fraud Analyzer contributors",
+  "main": "src/main.cjs",
+  "scripts": {
+    "assets": "node scripts/build-assets.cjs",
+    "start": "npm run assets && electron .",
+    "test": "node --test tests/*.test.cjs",
+    "smoke": "npm run assets && node scripts/smoke.cjs",
+    "build:backend": "node scripts/build-backend.cjs",
+    "pack": "npm run assets && npm run build:backend && electron-builder --dir",
+    "dist": "npm run assets && npm run build:backend && electron-builder"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "tailwindcss": "3.4.17",
+    "chart.js": "4.4.1",
+    "@playwright/test": "1.61.1"
+  },
+  "build": {
+    "appId": "org.apkfraud.analyzer",
+    "asar": true,
+    "directories": { "output": "dist" },
+    "files": ["src/**", "package.json"],
+    "extraResources": [
+      { "from": "build/frontend", "to": "frontend" },
+      { "from": "backend-dist/analyzer", "to": "analyzer" }
+    ],
+    "win": { "target": "nsis", "signAndEditExecutable": false },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false },
+    "mac": { "target": "dmg", "category": "public.app-category.developer-tools" },
+    "linux": { "target": "AppImage", "category": "Development" }
+  }
+}

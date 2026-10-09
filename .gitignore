@@ -15,3 +15,10 @@ test/
 tools/frida/
 tools/dumps/
 kaggle_upload/
+
+# Desktop build outputs
+desktop/node_modules/
+desktop/build/
+desktop/dist/
+desktop/backend-dist/
+desktop/backend-build/

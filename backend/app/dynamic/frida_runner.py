@@ -127,7 +127,8 @@ def run_unpack(package_name, duration=20, serial=None, dump_dir=None, triggers=N
     if not available():
         return {"available": False, "reason": "frida-python is not installed"}
     if dump_dir is None:
-        dump_dir = os.path.join(os.path.dirname(__file__), "..", "..", "tools", "dumps")
+        storage = os.getenv("APK_DESKTOP_DATA_DIR") or os.path.join(os.path.dirname(__file__), "..", "..")
+        dump_dir = os.path.join(storage, "tools", "dumps")
     dump_dir = os.path.abspath(dump_dir)
     os.makedirs(dump_dir, exist_ok=True)
 

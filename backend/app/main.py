@@ -42,7 +42,7 @@ MAX_BATCH_TOTAL_MB = max(
     MAX_UPLOAD_MB, int(os.getenv("MAX_BATCH_TOTAL_MB", "1000")),
 )
 UPLOAD_CHUNK_BYTES = 1024 * 1024
-FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
+FRONTEND_DIR = os.path.abspath(os.getenv("APK_FRONTEND_DIR") or os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
 _dynamic_analysis_lock = asyncio.Lock()
 TEMP_UPLOAD_PREFIX = "apk-fraud-"
 TEMP_UPLOAD_MAX_AGE_SECONDS = 24 * 60 * 60

@@ -77,7 +77,8 @@ def _frida_version() -> str:
 
 
 def _frida_cache_path(version: str) -> Path:
-    return REPO_ROOT / "tools" / "frida" / f"frida-server-{version}-x86_64"
+    storage = Path(os.getenv("APK_DESKTOP_DATA_DIR") or REPO_ROOT)
+    return storage / "tools" / "frida" / f"frida-server-{version}-x86_64"
 
 
 def _sandbox_avd_exists(root: Path | None) -> bool:
@@ -172,7 +173,8 @@ def _run_sandbox_install(job_id: str) -> None:
     _set_job(job_id, message="Downloading Android emulator and API 35 sandbox files from Google...")
     if os.name == "nt":
         powershell = shutil.which("powershell.exe") or shutil.which("pwsh.exe")
-        script = REPO_ROOT / "scripts" / "install_sandbox_components.ps1"
+        resources = Path(os.getenv("APK_DESKTOP_RESOURCE_DIR") or REPO_ROOT)
+        script = resources / "scripts" / "install_sandbox_components.ps1"
         if not powershell or not script.is_file():
             raise ComponentError("PowerShell sandbox installer is unavailable")
         command = [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), "-SdkRoot", str(root)]
