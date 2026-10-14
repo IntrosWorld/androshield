@@ -699,6 +699,7 @@ $("analyze-btn").addEventListener("click", async () => {
 
 // --- Rendering ---
 function render(a, report) {
+  window.setWorkspaceView?.("analysis");
   currentAnalysis = a;
   currentReport = report;
   // A failed/incomplete parse must NOT look like a clean "Low" app.
@@ -1225,6 +1226,7 @@ async function openFolderBatch(batchId) {
       } : null,
     }));
     $("batch-title").textContent = batch.folder_name || "Folder results";
+    window.setWorkspaceView?.("analysis");
     renderBatchProgress();
     $("batch-card").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (error) {

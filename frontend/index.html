@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,9 +7,10 @@
   <title>APK Fraud Analyzer</title>
   <script>
     (() => {
-      let theme = "dark";
+      let theme = "light";
       try {
-        if (localStorage.getItem("apk-analyzer-theme") === "light") theme = "light";
+        const saved = localStorage.getItem("apk-analyzer-theme");
+        if (saved === "dark" || saved === "light") theme = saved;
       } catch (_) {}
       document.documentElement.dataset.theme = theme;
       document.documentElement.classList.toggle("dark", theme === "dark");
@@ -364,32 +365,28 @@
       *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     }
   </style>
+  <link rel="stylesheet" href="workspace.css" />
 </head>
-<body class="text-slate-200 min-h-screen">
+<body data-workspace-view="analysis">
   <a class="skip-link" href="#main-content">Skip to analysis workspace</a>
-  <main id="main-content" class="relative max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
-    <!-- Header -->
-    <header class="flex items-start sm:items-center justify-between gap-5 mb-7 flex-col sm:flex-row">
-      <div class="w-full min-w-0 sm:w-auto">
-        <div class="eyebrow mb-2">Android threat triage</div>
-        <h1 class="text-xl sm:text-2xl font-semibold text-white flex items-center gap-2 min-w-0">
-          <i class="ti ti-shield-search text-cyan-300 text-[1.45rem]" aria-hidden="true"></i>
-          APK Fraud Analyzer
-        </h1>
-        <p class="text-sm text-slate-400 mt-1 max-w-2xl">Explainable static analysis, evidence correlation, and bounded AI investigation for suspicious Android packages.</p>
-      </div>
-      <div class="w-full min-w-0 sm:w-auto flex flex-wrap items-center gap-2 sm:justify-end">
-        <div id="gemini-badge" class="min-w-0 text-xs text-slate-500 flex flex-wrap gap-1.5 sm:justify-end" aria-live="polite"></div>
-        <button id="theme-toggle" class="btn-secondary theme-toggle" type="button" aria-pressed="false" aria-label="Switch to light mode">
-          <i id="theme-icon" class="ti ti-sun" aria-hidden="true"></i>
-          <span id="theme-label">Light mode</span>
-        </button>
-        <button id="settings-open" class="btn-secondary icon-button" type="button" aria-label="Open application settings" title="Application settings">
-          <i class="ti ti-settings" aria-hidden="true"></i>
-        </button>
-      </div>
-    </header>
-
+  <aside class="workspace-sidebar" aria-label="Workspace navigation">
+    <div class="workspace-brand"><i class="ti ti-shield-search" aria-hidden="true"></i><div>APK Analyzer<small>Fraud investigation workspace</small></div></div>
+    <p class="sidebar-label">Your workspace</p>
+    <nav class="sidebar-nav" aria-label="Investigations">
+      <button type="button" data-workspace-nav="analysis" aria-current="page"><i class="ti ti-scan" aria-hidden="true"></i>Analysis studio</button>
+      <button type="button" data-workspace-nav="history"><i class="ti ti-history" aria-hidden="true"></i>Sample history</button>
+      <button type="button" data-workspace-nav="folders"><i class="ti ti-folders" aria-hidden="true"></i>Folder runs</button>
+      <button id="settings-open" type="button" aria-label="Open application settings"><i class="ti ti-settings" aria-hidden="true"></i>Model &amp; tool settings</button>
+    </nav>
+    <div class="sidebar-footer"><strong>Static analysis on your device</strong><p>Inspect first. Run only with explicit approval in your emulator.</p></div>
+  </aside>
+  <header class="workspace-toolbar">
+    <div class="workspace-breadcrumb"><span>Workspace</span><span>/</span><strong id="workspace-location">Analysis studio</strong></div>
+    <div class="toolbar-actions"><div id="gemini-badge" aria-live="polite"></div><button id="theme-toggle" class="btn-secondary theme-toggle" type="button" aria-pressed="false" aria-label="Switch to dark mode" title="Switch color theme"><i id="theme-icon" class="ti ti-moon" aria-hidden="true"></i><span id="theme-label">Dark mode</span></button></div>
+  </header>
+  <main id="main-content">
+    <header class="workspace-intro"><div><p class="eyebrow">Inspect. Assess. Understand.</p><h1 id="workspace-heading" tabindex="-1">Understand every APK.</h1><p id="workspace-description">Inspect suspicious Android apps and turn extracted evidence into a clear assessment.</p></div><button id="workspace-add" class="btn-secondary" type="button"><i class="ti ti-plus" aria-hidden="true"></i>Add an APK</button></header>
+    <div class="intake-grid">
     <!-- Upload -->
     <section id="upload-card" class="glass rounded-2xl p-5 sm:p-7 mb-7" aria-labelledby="upload-title">
       <div class="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-5">
@@ -427,6 +424,12 @@
         </button>
       </div>
     </section>
+
+    <aside class="guide-card" aria-label="Inside an investigation"><p class="eyebrow">Inside an investigation</p><h2>One APK.<br>A clearer picture.</h2><ol class="guide-list"><li><i class="ti ti-file-search" aria-hidden="true"></i><div><strong>Inspect the package</strong><p>Extract metadata, permissions, and code signals without running the APK.</p></div></li><li><i class="ti ti-chart-bar" aria-hidden="true"></i><div><strong>Understand the score</strong><p>See which rules contributed to the risk assessment and why.</p></div></li><li><i class="ti ti-sparkles" aria-hidden="true"></i><div><strong>Investigate the evidence</strong><p>Optionally review extracted findings with your chosen AI provider.</p></div></li><li><i class="ti ti-file-export" aria-hidden="true"></i><div><strong>Take the findings with you</strong><p>Save a PDF report or export indicators as CSV and JSON.</p></div></li></ol><p class="guide-note">Static analysis works without an AI key. Runtime investigation requires a separately configured emulator and explicit action.</p></aside>
+    </div>
+    <section id="analysis-empty"><h2 class="empty-heading">Analysis results</h2><div class="workspace-empty"><i class="ti ti-shield-search" aria-hidden="true"></i><h2>Your findings will appear here</h2><p>Select an APK and start a static analysis to inspect its evidence.</p></div></section>
+    <section id="history-empty" class="workspace-empty history-empty"><i class="ti ti-history" aria-hidden="true"></i><h2>No saved analyses yet</h2><p>Analyze an APK in the studio. Its findings will be saved here.</p></section>
+    <section id="folder-empty" class="workspace-empty history-empty"><i class="ti ti-folders" aria-hidden="true"></i><h2>No folder runs yet</h2><p>Use Select APK folder in the studio to start a batch investigation.</p></section>
 
     <!-- Folder analysis history -->
     <section id="folder-history-card" class="glass rounded-2xl p-5 mb-8 hidden" aria-labelledby="folder-history-title">
@@ -768,6 +771,7 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=analyst-workspace-9"></script>
+  <script src="app.js?v=workspace-redesign-1"></script>
+  <script src="workspace.js"></script>
 </body>
 </html>

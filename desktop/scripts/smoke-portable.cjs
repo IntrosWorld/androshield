@@ -79,7 +79,7 @@ async function launch(executablePath) {
     }
     await page.locator('#theme-toggle').click();
     const profile = path.join(data, 'APK Fraud Analyzer Data');
-    await expect.poll(() => fs.existsSync(path.join(profile, 'theme.json')) && JSON.parse(fs.readFileSync(path.join(profile, 'theme.json'), 'utf8'))).toBe('light');
+    await expect.poll(() => fs.existsSync(path.join(profile, 'theme.json')) && JSON.parse(fs.readFileSync(path.join(profile, 'theme.json'), 'utf8'))).toBe('dark');
     assert.ok(fs.existsSync(path.join(profile, 'analyzer.db')));
     const cache = fs.readdirSync(path.join(profile, 'runtime'));
     assert.equal(cache.length, 1);
@@ -101,7 +101,7 @@ async function launch(executablePath) {
     await desktop.close();
     desktop = null;
     desktop = await launch(executable);
-    assert.equal(await desktop.page.evaluate(() => document.documentElement.dataset.theme), 'light');
+    assert.equal(await desktop.page.evaluate(() => document.documentElement.dataset.theme), 'dark');
     const saved = await desktop.page.evaluate(() => fetch('/api/samples').then(r => r.json()));
     assert.ok(saved.samples.some(sample => sample.id === id));
     assert.equal(fs.statSync(marker).mtimeMs, extractedAt, 'Relaunch reuses extracted runtime');

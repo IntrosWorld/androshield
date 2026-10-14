@@ -4,6 +4,12 @@ Electron (Chromium + Node.js) hosts the existing dashboard with a managed Python
 engine. The web app remains available separately. The desktop build includes local
 Tailwind CSS, Chart.js, fonts, and icons; no CDN is needed to load the interface.
 
+The `redesign` branch adds a light-first green workspace with persistent sidebar
+navigation for Analysis studio, Sample history, Folder runs, and model/tool settings.
+The toolbar theme switch preserves a saved light or dark preference. Existing users'
+saved themes remain unchanged. The upload panel, report exports, and explicit emulator
+controls use the existing analyzer pipeline.
+
 ## Develop on Windows
 
 From the repository root:

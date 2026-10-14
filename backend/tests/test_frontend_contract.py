@@ -81,7 +81,7 @@ class FrontendContractTests(unittest.TestCase):
         toggle = tag_with_id(HTML, "theme-toggle")
         self.assertRegex(toggle, r'type=["\']button["\']')
         self.assertRegex(toggle, r'aria-pressed=["\']false["\']')
-        self.assertIn('data-theme="dark"', HTML)
+        self.assertIn('data-theme="light"', HTML)
         self.assertIn('html[data-theme="light"]', HTML)
         self.assertIn('localStorage.getItem("apk-analyzer-theme")', HTML)
         self.assertIn('const THEME_STORAGE_KEY = "apk-analyzer-theme"', JS)

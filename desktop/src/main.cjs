@@ -39,7 +39,7 @@ async function openExternal(url) {
 
 function createWindow() {
   window = new BrowserWindow({ width: 1440, height: 940, minWidth: 1000, minHeight: 700,
-    title: 'APK Fraud Analyzer', backgroundColor: '#080b10', show: false,
+    title: 'APK Fraud Analyzer', backgroundColor: '#f6f8f6', show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false,
       preload: path.join(__dirname, 'preload.cjs'),
       partition: 'persist:analyzer' } });
@@ -111,7 +111,7 @@ if (ownsLock) app.whenReady().then(() => {
   const themeFile = path.join(app.getPath('userData'), 'theme.json');
   const trusted = event => window && event.sender === window.webContents && isLocal(event.senderFrame?.url, origin);
   ipcMain.on('desktop:theme-read', event => {
-    let theme = 'dark';
+    let theme = 'light';
     if (trusted(event)) {
       try {
         const saved = JSON.parse(fs.readFileSync(themeFile, 'utf8'));
