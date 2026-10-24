@@ -27,6 +27,9 @@ const output = path.join(root, '../docs/images');
     await page.addStyleTag({ content: '#gemini-badge { visibility:hidden } html { scroll-behavior:auto!important } * { transition:none!important;animation:none!important }' });
     const shot = async name => page.screenshot({ path: path.join(output, name) });
     await shot('redesign-studio.png');
+    await page.locator('#theme-toggle').click();
+    await shot('redesign-dark-studio.png');
+    await page.locator('#theme-toggle').click();
     await page.locator('#file-input').setInputFiles(sample);
     await page.locator('#analyze-btn').click();
     await expect(page.locator('#results')).toBeVisible({ timeout: 120000 });
@@ -40,8 +43,10 @@ const output = path.join(root, '../docs/images');
     }
     await page.locator('#theme-toggle').click();
     await page.evaluate(() => { const chart = Chart.getChart(document.getElementById('gauge')); chart.stop(); chart.options.animation = false; chart.update('none'); });
-    await page.locator('#overview').evaluate(el => el.scrollIntoView({ block: 'start', behavior: 'instant' }));
-    await shot('redesign-dark-analysis.png');
+    for (const [id, file] of [['overview', 'redesign-dark-analysis.png'], ['static-evidence', 'redesign-dark-static-evidence.png'], ['threat-intel', 'redesign-dark-threat-mapping.png']]) {
+      await page.locator(`#${id}`).evaluate(el => el.scrollIntoView({ block: 'start', behavior: 'instant' }));
+      await shot(file);
+    }
     await page.locator('#settings-open').click();
     await expect(page.locator('#settings-status')).toContainText('Settings are stored locally', { timeout: 30000 });
     await shot('redesign-settings.png');
