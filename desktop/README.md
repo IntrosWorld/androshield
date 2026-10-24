@@ -10,6 +10,15 @@ The toolbar theme switch preserves a saved light or dark preference. Existing us
 saved themes remain unchanged. The upload panel, report exports, and explicit emulator
 controls use the existing analyzer pipeline.
 
+## Workspace preview
+
+![Light mode analysis studio](../docs/images/redesign-studio.png)
+
+![Dark mode analysis and evidence review](../docs/images/redesign-dark-analysis.png)
+
+Documentation captures use the harmless synthetic APK and an isolated profile.
+Run `npm run assets` and `node scripts/capture-screenshots.cjs` to refresh them.
+
 ## Develop on Windows
 
 From the repository root:

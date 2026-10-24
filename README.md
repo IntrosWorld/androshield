@@ -22,41 +22,37 @@ temporary files stay in `APK Fraud Analyzer Data` beside it. Configure optional
 ADB, SDK, emulator, Java, Ollama, and model paths in Settings. Move the EXE and data
 folder together to another PC, then update any absolute external tool paths.
 
-## Dashboard
+## Redesigned desktop workspace
 
-The analyst console keeps upload, deterministic triage, evidence review, optional AI,
-and emulator-only runtime analysis visibly separated. It uses self-hosted Google Sans
-Flex and the official Tabler outline icon family, with no frontend build step.
+The `redesign` branch introduces a light-first workspace with a persistent sidebar,
+separate sample and folder history, green controls, and a saved light/dark preference.
+These captures come from the Electron app using an isolated documentation profile.
 
-![APK upload workspace](docs/images/dashboard-desktop.png)
+### Analysis studio
 
-### Light mode analysis workspace
+![Redesigned analysis studio with sidebar navigation](docs/images/redesign-studio.png)
 
-The light theme keeps the same dense analyst layout while adapting evidence labels,
-severity colors, panel surfaces, and typography for a bright workspace.
+### Explainable analysis
 
-![Light mode analysis summary and static evidence](docs/images/light-mode-analysis-summary.png)
+![Light mode static verdict and assessment](docs/images/redesign-analysis.png)
 
-![Light mode YARA, MITRE, certificate, and APKiD evidence panels](docs/images/light-mode-evidence-panels.png)
-
-### Real CIC MalDroid banking analysis
-
-The populated views below come from a real 468,037-byte Banking-family APK extracted
-from the [CIC MalDroid-2020 dataset](https://www.unb.ca/cic/datasets/maldroid-2020.html).
-Its SHA256 is `a6408087c77ee164ace8800fa008a91ac2c41a004c7a0b940e7ccfe4fe591725`.
-The APK was submitted only to `/api/analyze`; it was never installed or executed.
-
-| Risk verdict and severity levels | Threat explanation and bounded agent |
+| Static evidence | Threat mapping |
 |---|---|
-| ![CIC sample risk verdict](docs/images/cic-verdict-overview.png) | ![CIC sample assessment](docs/images/cic-assessment.png) |
+| ![Score breakdown and permissions](docs/images/redesign-static-evidence.png) | ![YARA, ATT&CK Mobile, certificates, and APKiD](docs/images/redesign-threat-mapping.png) |
 
-| Score contributions and permissions | Suspicious APIs and network IOCs |
-|---|---|
-| ![CIC score contributions and permissions](docs/images/cic-static-evidence.png) | ![CIC suspicious APIs and IOCs](docs/images/cic-api-ioc-evidence.png) |
+### Dark mode and settings
 
-| YARA, MITRE, certificate, and APKiD | Emulator boundary and response plan |
-|---|---|
-| ![CIC threat mapping](docs/images/cic-threat-mapping.png) | ![CIC sandbox controls and analyst actions](docs/images/cic-sandbox-action-plan.png) |
+![Dark mode analysis workspace](docs/images/redesign-dark-analysis.png)
+
+![Model and external tool settings](docs/images/redesign-settings.png)
+
+The results shown use `tools/make_test_apk.py`: a harmless, unsigned fixture with
+no executable code. Its deliberately suspicious permissions and strings exercise the
+static detectors. The displayed score is an illustrative fixture result, not a
+measurement of detection accuracy. No APK was installed or executed for these captures.
+
+Regenerate the images with `npm run assets` followed by
+`node scripts/capture-screenshots.cjs` from `desktop/`.
 
 Key UI capabilities:
 
