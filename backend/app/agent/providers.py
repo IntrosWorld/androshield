@@ -259,7 +259,7 @@ class OpenRouterProvider(AgentProvider):
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
-                "X-Title": "APK Fraud Analyzer",
+                "X-Title": "AndroShield",
             },
             method="POST",
         )

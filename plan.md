@@ -2,7 +2,7 @@ Below is a **complete practical plan** to build this project as a strong hackath
 
 # Project Title
 
-**Generative AI-Based Automated Analysis and Risk Scoring of Fraudulent APKs**
+**AndroShield — Automated Analysis and Risk Scoring of Fraudulent APKs**
 
 # 1. Main Idea
 

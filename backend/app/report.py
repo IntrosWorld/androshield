@@ -35,7 +35,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm, bottomMargin=16 * mm,
                             leftMargin=16 * mm, rightMargin=16 * mm,
-                            title="APK Fraud Analysis Report")
+                            title="AndroShield Analysis Report")
     ss = _styles()
     el = []
 
@@ -46,7 +46,7 @@ def build_pdf(analysis: dict, report: dict) -> bytes:
     sev_color = SEVERITY_COLORS.get(sev, colors.grey)
 
     # --- Title ---
-    el.append(Paragraph("APK Fraud Analysis Report", ss["Title"]))
+    el.append(Paragraph("AndroShield Analysis Report", ss["Title"]))
     el.append(Paragraph("Generative-AI Automated Static Analysis &amp; Risk Scoring", ss["Small"]))
     el.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#1a237e")))
     el.append(Spacer(1, 6))

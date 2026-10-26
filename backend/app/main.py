@@ -44,7 +44,7 @@ MAX_BATCH_TOTAL_MB = max(
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 FRONTEND_DIR = os.path.abspath(os.getenv("APK_FRONTEND_DIR") or os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
 _dynamic_analysis_lock = asyncio.Lock()
-TEMP_UPLOAD_PREFIX = "apk-fraud-"
+TEMP_UPLOAD_PREFIX = "androshield-"
 TEMP_UPLOAD_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
@@ -155,7 +155,7 @@ async def _lifespan(_application: FastAPI) -> AsyncIterator[None]:
             await asyncio.gather(*tasks, return_exceptions=True)
 
 
-app = FastAPI(title="APK Fraud Analyzer", version="1.0.0", lifespan=_lifespan)
+app = FastAPI(title="AndroShield", version="1.0.0", lifespan=_lifespan)
 cors_origins = [o.strip() for o in os.getenv(
     "CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
 ).split(",") if o.strip()]

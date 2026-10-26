@@ -27,7 +27,7 @@ execFileSync(process.execPath, [require.resolve('electron-builder/cli.js'), '--w
   }
   await hashTree(appDir);
   const compiler = await getMakeNsisPath();
-  const output = path.join(root, `dist/APK-Fraud-Analyzer-Portable-${require('../package.json').version}.exe`);
+  const output = path.join(root, `dist/AndroShield-Portable-${require('../package.json').version}.exe`);
   execFileSync(compiler.path, ['/V2', `/DAPP_DIR=${appDir}`, `/DOUTPUT=${output}`, `/DBUILD_ID=${hash.digest('hex').slice(0, 24)}`, path.join(__dirname, 'portable.nsi')], {
     cwd: root, stdio: 'inherit', env: { ...process.env, ...compiler.env, TEMP: temp, TMP: temp },
   });

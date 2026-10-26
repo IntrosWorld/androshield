@@ -84,7 +84,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('data-theme="light"', HTML)
         self.assertIn('html[data-theme="light"]', HTML)
         self.assertIn('localStorage.getItem("apk-analyzer-theme")', HTML)
-        self.assertIn('const THEME_STORAGE_KEY = "apk-analyzer-theme"', JS)
+        self.assertIn('const THEME_STORAGE_KEY = "androshield-theme"', JS)
         self.assertIn('localStorage.setItem(THEME_STORAGE_KEY, next)', JS)
         self.assertIn('$("theme-toggle")?.addEventListener("click"', JS)
         self.assertIn('--gauge-track', HTML + JS)

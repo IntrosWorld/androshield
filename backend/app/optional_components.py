@@ -194,7 +194,7 @@ def _run_frida_install(job_id: str) -> None:
     asset = f"frida-server-{version}-android-x86_64.xz"
     url = f"https://github.com/frida/frida/releases/download/{version}/{asset}"
     _set_job(job_id, message=f"Downloading Frida {version} from GitHub...")
-    request = urllib.request.Request(url, headers={"User-Agent": "APK-Fraud-Analyzer"})
+    request = urllib.request.Request(url, headers={"User-Agent": "AndroShield"})
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             compressed = response.read(128 * 1024 * 1024 + 1)

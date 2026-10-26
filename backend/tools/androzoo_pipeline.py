@@ -66,7 +66,7 @@ def fetch_metadata(output: Path, url: str = METADATA_URL, max_retries: int = 100
     failures = 0
     while True:
         existing = partial.stat().st_size if partial.exists() else 0
-        headers = {"User-Agent": "APK-Fraud-Analyzer-AndroZoo/1.0"}
+        headers = {"User-Agent": "AndroShield-AndroZoo/1.0"}
         if existing:
             headers["Range"] = f"bytes={existing}-"
         request = urllib.request.Request(url, headers=headers)
@@ -278,7 +278,7 @@ def _download_one(row: dict, output: Path, key: str, retries: int = 2) -> tuple[
     partial = destination.with_suffix(".apk.part")
     query = urllib.parse.urlencode({"apikey": key, "sha256": sha256})
     request = urllib.request.Request(
-        f"{DOWNLOAD_URL}?{query}", headers={"User-Agent": "APK-Fraud-Analyzer-AndroZoo/1.0"}
+        f"{DOWNLOAD_URL}?{query}", headers={"User-Agent": "AndroShield-AndroZoo/1.0"}
     )
     last_error = "download failed"
     for attempt in range(retries + 1):

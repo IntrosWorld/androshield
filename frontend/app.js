@@ -1,4 +1,4 @@
-// APK Fraud Analyzer dashboard logic
+// AndroShield dashboard logic
 const API = ""; // same origin
 
 const SEV_COLORS = {
@@ -40,7 +40,7 @@ const severityChipTone = (severity) => ({
   Critical: "chip-danger",
 }[severity] || "");
 
-const THEME_STORAGE_KEY = "apk-analyzer-theme";
+const THEME_STORAGE_KEY = "androshield-theme";
 
 function updateThemeControl(theme) {
   const button = $("theme-toggle");

@@ -1,4 +1,4 @@
-# APK Fraud Analyzer — single image serving API + dashboard.
+# AndroShield — single image serving API + dashboard.
 # Static analysis only; the container never executes uploaded APKs.
 FROM python:3.12-slim
 

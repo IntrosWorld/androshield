@@ -3,16 +3,17 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { startBackend } = require('./backend.cjs');
 const { isLocal, isExport, externalURL } = require('./policy.cjs');
-const { profilePath } = require('./profile.cjs');
+const { profilePath, migrateLegacyProfile } = require('./profile.cjs');
 let window, backend, origin;
 let quitting = false;
 let ready = false;
 const root = path.join(__dirname, '..');
-app.setName('APK Fraud Analyzer');
-const profile = profilePath(process.env);
+app.setName('AndroShield');
+const profile = profilePath(process.env, app.getPath('appData'));
 let profileError;
 if (profile) {
   try {
+    migrateLegacyProfile(profile, process.env, app.getPath('appData'));
     fs.mkdirSync(profile, { recursive: true });
     fs.accessSync(profile, fs.constants.W_OK);
     app.setPath('userData', profile);
@@ -39,7 +40,7 @@ async function openExternal(url) {
 
 function createWindow() {
   window = new BrowserWindow({ width: 1440, height: 940, minWidth: 1000, minHeight: 700,
-    title: 'APK Fraud Analyzer', backgroundColor: '#f6f8f6', show: false,
+    title: 'AndroShield', backgroundColor: '#f6f8f6', show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false,
       preload: path.join(__dirname, 'preload.cjs'),
       partition: 'persist:analyzer' } });
@@ -133,7 +134,7 @@ if (ownsLock) app.whenReady().then(() => {
     } }, { type: 'separator' }, { role: 'quit' }] },
     { role: 'editMenu' }, { label: 'View', submenu: [{ role: 'reload' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }, ...(!app.isPackaged ? [{ role: 'toggleDevTools' }] : [])] },
     { label: 'Help', submenu: [{ label: 'Open data folder', click: () => { void shell.openPath(app.getPath('userData')); } },
-      { label: 'About APK Fraud Analyzer', click: () => dialog.showMessageBox(window, { title: 'APK Fraud Analyzer', message: `APK Fraud Analyzer ${app.getVersion()}`, detail: 'Static APK analysis and explainable risk scoring.\nElectron desktop with a local Python engine.' }) }] },
+      { label: 'About AndroShield', click: () => dialog.showMessageBox(window, { title: 'AndroShield', message: `AndroShield ${app.getVersion()}`, detail: 'Static APK analysis and explainable risk scoring.\nElectron desktop with a local Python engine.' }) }] },
   ]));
   return boot();
 }).catch(error => { dialog.showErrorBox('Desktop startup failed', error.message); app.quit(); });

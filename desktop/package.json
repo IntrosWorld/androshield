@@ -1,10 +1,10 @@
 {
-  "name": "apk-fraud-analyzer-desktop",
-  "productName": "APK Fraud Analyzer",
+  "name": "androshield-desktop",
+  "productName": "AndroShield",
   "version": "0.1.0",
   "private": true,
   "description": "Local APK fraud analysis desktop workspace",
-  "author": "APK Fraud Analyzer contributors",
+  "author": "AndroShield contributors",
   "engines": { "node": ">=22.12.0" },
   "main": "src/main.cjs",
   "scripts": {
@@ -25,7 +25,7 @@
     "@playwright/test": "1.61.1"
   },
   "build": {
-    "appId": "org.apkfraud.analyzer",
+    "appId": "org.androshield.desktop",
     "asar": true,
     "directories": { "output": "dist" },
     "files": ["src/**", "package.json"],
@@ -35,7 +35,7 @@
     ],
     "win": { "target": "nsis", "signExecutable": false },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false },
-    "portable": { "artifactName": "APK-Fraud-Analyzer-Portable-${version}.${ext}", "requestExecutionLevel": "user", "unpackDirName": false, "useZip": true },
+    "portable": { "artifactName": "AndroShield-Portable-${version}.${ext}", "requestExecutionLevel": "user", "unpackDirName": false, "useZip": true },
     "mac": { "target": "dmg", "category": "public.app-category.developer-tools" },
     "linux": { "target": "AppImage", "category": "Development" }
   }

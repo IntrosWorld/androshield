@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Upgrade the APK analyzer dashboard into a clearer, accessible analyst console without changing backend behavior.
+**Goal:** Upgrade the AndroShield dashboard into a clearer, accessible analyst console without changing backend behavior.
 
 **Architecture:** Keep the existing no-build vanilla HTML/JavaScript architecture. Add a small CSS component layer to `index.html`, wire reusable interaction-state helpers in `app.js`, and protect the markup/behavior contract with Python static tests.
 

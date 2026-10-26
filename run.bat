@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title APK Fraud Analyzer
+title AndroShield
 cd /d "%~dp0"
 
 set "PROJECT_ROOT=%CD%"
@@ -12,7 +12,7 @@ set "EMULATOR=%LOCALAPPDATA%\Android\Sdk\emulator\emulator.exe"
 
 echo.
 echo ============================================================
-echo   APK Fraud Analyzer
+echo   AndroShield
 echo ============================================================
 echo.
 

@@ -60,9 +60,12 @@ async function launch(executablePath) {
   fs.mkdirSync(testRoot, { recursive: true });
   const data = fs.mkdtempSync(path.join(testRoot, 'run-'));
   const executable = path.join(data, 'Portable Analyzer.exe');
-  fs.copyFileSync(process.env.APK_DESKTOP_EXECUTABLE || path.join(root, 'dist/APK-Fraud-Analyzer-Portable-0.1.0.exe'), executable);
+  fs.copyFileSync(process.env.APK_DESKTOP_EXECUTABLE || path.join(root, 'dist/AndroShield-Portable-0.1.0.exe'), executable);
   const sample = path.join(data, 'harmless.apk');
   execFileSync(pythonPath(root), [path.join(root, '../tools/make_test_apk.py'), sample]);
+  const legacyProfile = path.join(data, 'APK Fraud Analyzer Data');
+  fs.mkdirSync(legacyProfile);
+  fs.writeFileSync(path.join(legacyProfile, 'upgrade-note.txt'), 'Retain existing workspace');
   let desktop = await launch(executable);
   try {
     const { page } = desktop;
@@ -78,7 +81,10 @@ async function launch(executablePath) {
       assert.equal(await page.evaluate(url => fetch(url).then(r => r.status), `/api/samples/${id}/${format}`), 200);
     }
     await page.locator('#theme-toggle').click();
-    const profile = path.join(data, 'APK Fraud Analyzer Data');
+    const profile = path.join(data, 'AndroShield Data');
+    assert.equal(await page.title(), 'AndroShield');
+    assert.equal(fs.existsSync(legacyProfile), false);
+    assert.equal(fs.readFileSync(path.join(profile, 'upgrade-note.txt'), 'utf8'), 'Retain existing workspace');
     await expect.poll(() => fs.existsSync(path.join(profile, 'theme.json')) && JSON.parse(fs.readFileSync(path.join(profile, 'theme.json'), 'utf8'))).toBe('dark');
     assert.ok(fs.existsSync(path.join(profile, 'analyzer.db')));
     const cache = fs.readdirSync(path.join(profile, 'runtime'));

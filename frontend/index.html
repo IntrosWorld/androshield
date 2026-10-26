@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark light" />
-  <title>APK Fraud Analyzer</title>
+  <title>AndroShield</title>
   <script>
     (() => {
       let theme = "light";
       try {
-        const saved = localStorage.getItem("apk-analyzer-theme");
+        const saved = localStorage.getItem("androshield-theme") || localStorage.getItem("apk-analyzer-theme");
         if (saved === "dark" || saved === "light") theme = saved;
       } catch (_) {}
       document.documentElement.dataset.theme = theme;
@@ -370,7 +370,7 @@
 <body data-workspace-view="analysis">
   <a class="skip-link" href="#main-content">Skip to analysis workspace</a>
   <aside class="workspace-sidebar" aria-label="Workspace navigation">
-    <div class="workspace-brand"><i class="ti ti-shield-search" aria-hidden="true"></i><div>APK Analyzer<small>Fraud investigation workspace</small></div></div>
+    <div class="workspace-brand"><i class="ti ti-shield-search" aria-hidden="true"></i><div>AndroShield<small>Fraud investigation workspace</small></div></div>
     <p class="sidebar-label">Your workspace</p>
     <nav class="sidebar-nav" aria-label="Investigations">
       <button type="button" data-workspace-nav="analysis" aria-current="page"><i class="ti ti-scan" aria-hidden="true"></i>Analysis studio</button>
@@ -737,7 +737,7 @@
             <div class="field field-wide"><label for="setting-frida-server">Frida server file for the emulator</label><input id="setting-frida-server" class="control" type="text" autocomplete="off" placeholder="D:\Android\frida-server-android-x86_64" /><p id="tool-frida_server_path" class="field-help"></p><p class="field-help">This is an Android binary. It must be started inside the emulator, never on this computer.</p></div>
             <div class="field field-wide"><label for="setting-static-model">Optional static ML model</label><input id="setting-static-model" class="control" type="text" autocomplete="off" placeholder="models\apk_static_model.joblib" /><p id="tool-static_model_path" class="field-help"></p><p class="field-help">Use only a trusted model you trained or verified. Pickle/joblib models can execute Python when loaded. Restart the app after changing this path.</p></div>
           </div>
-          <p class="field-help">Relative paths start inside APK Fraud Analyzer Data in the desktop app. After moving to another computer, update any missing paths. Enter paths without surrounding quotes. The Ollama service address and GGUF import location are configured separately below.</p>
+          <p class="field-help">Relative paths start inside AndroShield Data in the desktop app. After moving to another computer, update any missing paths. Enter paths without surrounding quotes. The Ollama service address and GGUF import location are configured separately below.</p>
         </section>
 
         <section class="settings-section" aria-labelledby="settings-downloads-title">

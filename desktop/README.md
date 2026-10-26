@@ -1,4 +1,10 @@
-# APK Fraud Analyzer Desktop
+# AndroShield Desktop
+
+Previously named APK Fraud Analyzer. On first launch, AndroShield migrates the known
+legacy profile to **AndroShield Data** beside the portable EXE, or to
+`%APPDATA%/AndroShield` for installed use, when the new location does not exist.
+Close the previous app before upgrading. Existing explicit profile overrides keep
+their selected location, and a pre-existing new profile is never overwritten.
 
 Electron (Chromium + Node.js) hosts the existing dashboard with a managed Python/FastAPI
 engine. The web app remains available separately. The desktop build includes local
@@ -43,7 +49,7 @@ to malicious sites. Selecting an APK does not analyze or execute it automaticall
 ## Local state and process lifecycle
 
 History and settings use a separate SQLite database under Electron's `userData`
-directory (normally `%APPDATA%/APK Fraud Analyzer` on Windows). Use **Help → Open data
+directory (normally `%APPDATA%/AndroShield` on Windows). Use **Help → Open data
 folder** to locate it. Web history is not copied automatically. Desktop Frida downloads
 and runtime dumps also go under this writable directory. `APK_DESKTOP_USER_DATA` can
 override the directory for isolated tests. Saved API keys use the existing settings
@@ -86,15 +92,15 @@ profile so existing history is untouched.
 
 ### Portable Windows app
 
-Run `npm run portable` to create `dist/APK-Fraud-Analyzer-Portable-0.1.0.exe`.
+Run `npm run portable` to create `dist/AndroShield-Portable-0.1.0.exe`.
 Double-click it from a writable folder or USB drive; no installer, administrator
 rights, Python, or Node.js installation is required. History, settings, provider
-keys, theme, and browser profile live in **APK Fraud Analyzer Data** beside the EXE.
+keys, theme, and browser profile live in **AndroShield Data** beside the EXE.
 Move that folder together with the EXE to retain your workspace. Existing installed
 app history is not copied automatically. Close the app before moving it or ejecting
 the drive. Optional Android SDK/emulator and Ollama installations remain external.
 
-The EXE extracts its runtime once into **APK Fraud Analyzer Data/runtime** and reuses
+The EXE extracts its runtime once into **AndroShield Data/runtime** and reuses
 it on subsequent launches. Temporary files, browser caches, crash dumps, logs, and
 the default export folder also stay inside that data folder. No CMD launcher is
 needed. Allow roughly 1 GB beside the EXE for extraction, plus room for your data.
@@ -106,7 +112,7 @@ In **Settings → External tool locations**, enter the Android SDK folder, ADB a
 emulator executables, AVD folder, Java home, Ollama executable, Android Frida-server
 binary, or trusted static classifier model. Blank fields use available detection;
 explicit paths take precedence and missing selections are reported instead of silently
-switching tools. Relative paths resolve inside **APK Fraud Analyzer Data**, so tools
+switching tools. Relative paths resolve inside **AndroShield Data**, so tools
 stored there can move with the app. Absolute paths may need updating on another PC.
 Restart after changing the static classifier model. Basic static analysis needs none
 of these external tools. Dynamic analysis requires a separately configured emulator;
@@ -138,7 +144,7 @@ notarization and auto-updates are not configured; Windows builds are unsigned.
 To smoke-test an unpacked Windows build:
 
 ```powershell
-$env:APK_DESKTOP_EXECUTABLE = (Resolve-Path 'dist/win-unpacked/APK Fraud Analyzer.exe').Path
+$env:APK_DESKTOP_EXECUTABLE = (Resolve-Path 'dist/win-unpacked/AndroShield.exe').Path
 node scripts/smoke.cjs
 Remove-Item Env:APK_DESKTOP_EXECUTABLE
 ```

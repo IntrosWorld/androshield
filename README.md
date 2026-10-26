@@ -1,4 +1,4 @@
-# Generative-AI APK Fraud Analyzer
+# AndroShield
 
 Upload a suspicious Android APK → automated **static analysis** (manifest, permissions,
 suspicious APIs, IOCs, obfuscation) → transparent **rule-based risk score** → **Gemini**
@@ -18,7 +18,7 @@ From `desktop`, run `npm ci` and `npm start` after installing the backend depend
 See [desktop setup, tests, and packaging](desktop/README.md) for details.
 For a Windows app that runs without installation, run `npm run portable` from
 `desktop`. Double-click the EXE directly; its runtime cache, history, settings, and
-temporary files stay in `APK Fraud Analyzer Data` beside it. Configure optional
+temporary files stay in `AndroShield Data` beside it. Configure optional
 ADB, SDK, emulator, Java, Ollama, and model paths in Settings. Move the EXE and data
 folder together to another PC, then update any absolute external tool paths.
 
