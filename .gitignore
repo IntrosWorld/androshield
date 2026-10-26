@@ -22,3 +22,9 @@ desktop/build/
 desktop/dist/
 desktop/backend-dist/
 desktop/backend-build/
+
+# Optional native optimization experiment
+backend/native/build/
+backend/native/*.egg-info/
+*.pyd
+*.so

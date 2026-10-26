@@ -7,6 +7,7 @@ reflection, and high-entropy strings.
 import math
 import re
 from collections import Counter
+from . import native_accel
 
 
 def _shannon_entropy(s: str) -> float:
@@ -91,13 +92,7 @@ def analyze_obfuscation(apk, dex_list, dex_strings, api_result=None):
             score += applied
 
     # --- High-entropy strings (likely encrypted blobs) ---
-    high_entropy = 0
-    entropy_candidates = 0
-    for s in (dex_strings or []):
-        if 24 <= len(s) <= 512 and " " not in s:
-            entropy_candidates += 1
-            if _shannon_entropy(s) > 4.5:
-                high_entropy += 1
+    high_entropy, entropy_candidates = native_accel.entropy_counts(dex_strings, _shannon_entropy)
     entropy_ratio = high_entropy / entropy_candidates if entropy_candidates else 0.0
     # Absolute counts scale with app/library size. A ratio prevents large ad-heavy apps
     # from looking packed simply because they contain hundreds of hashes and identifiers.

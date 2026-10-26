@@ -9,6 +9,7 @@ import base64
 import ipaddress
 import re
 from urllib.parse import urlsplit
+from . import native_accel
 
 _B64_RE = re.compile(r"^[A-Za-z0-9+/]{16,}={0,2}$")
 _HEX_RE = re.compile(r"^(?:[0-9a-fA-F]{2}){8,}$")
@@ -162,12 +163,8 @@ def extract_iocs(dex_strings, max_each: int = 200):
         for m in SECRET_RE.findall(s):
             secrets.add(m)
 
-        low = s.lower()
-        for kw in SUSPICIOUS_KEYWORDS:
-            # Word-boundary match — substring matching produced false positives like
-            # "upi" inside "grouping"/"occupied" or "otp" inside "crypto".
-            if _KEYWORD_RE[kw].search(low):
-                keywords[kw] = keywords.get(kw, 0) + 1
+    # Same word-boundary semantics; the optional native path falls back for Unicode.
+    keywords = native_accel.keyword_counts(scan_strings, SUSPICIOUS_KEYWORDS, _KEYWORD_RE)
 
     # Domains are derived ONLY from real URLs. A bare-string domain scan was matching
     # Java package names (android.app, kotlinx.coroutines.io, libcore.icu.icu — ".io"/

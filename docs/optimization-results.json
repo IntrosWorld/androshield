@@ -1,0 +1,253 @@
+{
+  "python": "3.13.2",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "native_api": 1,
+  "parity_normalization": [
+    "manifest.activities",
+    "manifest.services",
+    "manifest.receivers",
+    "manifest.providers"
+  ],
+  "repeats": 3,
+  "synthetic_strings": 20030,
+  "kernels": {
+    "keyword_counts": {
+      "python_ms": 788.82,
+      "native_ms": 38.234,
+      "speedup": 20.631,
+      "parity": true,
+      "runs_ms": {
+        "python": [
+          761.785,
+          788.82,
+          808.807
+        ],
+        "native": [
+          38.613,
+          38.234,
+          36.699
+        ]
+      }
+    },
+    "entropy_counts": {
+      "python_ms": 255.02,
+      "native_ms": 14.577,
+      "speedup": 17.494,
+      "parity": true,
+      "runs_ms": {
+        "python": [
+          255.02,
+          267.092,
+          239.36
+        ],
+        "native": [
+          15.485,
+          14.577,
+          14.265
+        ]
+      }
+    },
+    "full_ioc_extraction": {
+      "python_ms": 1080.491,
+      "native_ms": 255.655,
+      "speedup": 4.226,
+      "parity": true,
+      "runs_ms": {
+        "python": [
+          981.996,
+          1080.491,
+          1083.776
+        ],
+        "native": [
+          255.655,
+          254.242,
+          264.651
+        ]
+      }
+    },
+    "full_obfuscation": {
+      "python_ms": 283.104,
+      "native_ms": 18.547,
+      "speedup": 15.264,
+      "parity": true,
+      "runs_ms": {
+        "python": [
+          281.941,
+          283.584,
+          283.104
+        ],
+        "native": [
+          18.547,
+          18.216,
+          18.644
+        ]
+      }
+    }
+  },
+  "pipeline": [
+    {
+      "file": "synthetic-strings.apk",
+      "bytes": 1336644,
+      "python_ms": 2513.8,
+      "native_ms": 1170.165,
+      "speedup": 2.148,
+      "parity": true,
+      "runs_ms": {
+        "python": [
+          2057.387,
+          2513.8,
+          2723.45
+        ],
+        "native": [
+          1170.165,
+          1086.978,
+          1629.773
+        ]
+      },
+      "profile_top": [
+        {
+          "file": "static_analyzer.py",
+          "function": "analyze",
+          "cumulative_ms": 8704.279
+        },
+        {
+          "file": "__init__.py",
+          "function": "get_strings",
+          "cumulative_ms": 3596.698
+        },
+        {
+          "file": "__init__.py",
+          "function": "get",
+          "cumulative_ms": 3576.374
+        },
+        {
+          "file": "mutf8.py",
+          "function": "decode_modified_utf8",
+          "cumulative_ms": 3540.376
+        },
+        {
+          "file": "iocs.py",
+          "function": "extract_iocs",
+          "cumulative_ms": 2243.693
+        },
+        {
+          "file": "misc.py",
+          "function": "AnalyzeAPK",
+          "cumulative_ms": 2179.361
+        },
+        {
+          "file": "native_accel.py",
+          "function": "keyword_counts",
+          "cumulative_ms": 1882.248
+        },
+        {
+          "file": "native_accel.py",
+          "function": "_python_keywords",
+          "cumulative_ms": 1882.191
+        },
+        {
+          "file": "analysis.py",
+          "function": "add",
+          "cumulative_ms": 1852.755
+        },
+        {
+          "file": "static_analyzer.py",
+          "function": "_collect_dex_strings",
+          "cumulative_ms": 1800.582
+        },
+        {
+          "file": "obfuscation.py",
+          "function": "analyze_obfuscation",
+          "cumulative_ms": 1771.759
+        },
+        {
+          "file": "native_accel.py",
+          "function": "entropy_counts",
+          "cumulative_ms": 1767.033
+        }
+      ]
+    },
+    {
+      "file": "com.darkempire78.opencalculator_53.apk",
+      "bytes": 2359134,
+      "python_ms": 6927.941,
+      "native_ms": 6545.019,
+      "speedup": 1.059,
+      "parity": true,
+      "runs_ms": {
+        "python": [
+          6927.941,
+          7368.711,
+          6798.323
+        ],
+        "native": [
+          6035.766,
+          6545.019,
+          6888.313
+        ]
+      },
+      "profile_top": [
+        {
+          "file": "static_analyzer.py",
+          "function": "analyze",
+          "cumulative_ms": 18090.945
+        },
+        {
+          "file": "misc.py",
+          "function": "AnalyzeAPK",
+          "cumulative_ms": 15608.754
+        },
+        {
+          "file": "analysis.py",
+          "function": "add",
+          "cumulative_ms": 10286.142
+        },
+        {
+          "file": "analysis.py",
+          "function": "__init__",
+          "cumulative_ms": 9963.669
+        },
+        {
+          "file": "analysis.py",
+          "function": "_create_basic_block",
+          "cumulative_ms": 9350.196
+        },
+        {
+          "file": "__init__.py",
+          "function": "get_instructions_idx",
+          "cumulative_ms": 3875.176
+        },
+        {
+          "file": "analysis.py",
+          "function": "create_xref",
+          "cumulative_ms": 3349.071
+        },
+        {
+          "file": "analysis.py",
+          "function": "_create_xref",
+          "cumulative_ms": 3347.04
+        },
+        {
+          "file": "__init__.py",
+          "function": "get_instructions",
+          "cumulative_ms": 3007.383
+        },
+        {
+          "file": "__init__.py",
+          "function": "get_instructions",
+          "cumulative_ms": 2714.718
+        },
+        {
+          "file": "analysis.py",
+          "function": "set_childs",
+          "cumulative_ms": 2696.575
+        },
+        {
+          "file": "analysis.py",
+          "function": "get_basic_block",
+          "cumulative_ms": 2379.176
+        }
+      ]
+    }
+  ]
+}

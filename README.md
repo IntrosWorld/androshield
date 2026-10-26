@@ -12,6 +12,10 @@ investigation report → PDF export. Built for banking-fraud / SOC first-level t
 
 ## Desktop application
 
+The `optimization` branch includes optional C++ string-scanning kernels, disabled by
+default. See the [native experiment](backend/native/README.md) for build instructions,
+parity tests, measured results, and packaging limitations.
+
 The Electron desktop app starts and stops its own local Python engine, bundles the
 dashboard assets, and stores desktop history and settings in the OS user-data folder.
 From `desktop`, run `npm ci` and `npm start` after installing the backend dependencies.
